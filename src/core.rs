@@ -1,10 +1,11 @@
 use std::any::Any;
 use std::collections::{HashMap, BinaryHeap, HashSet};
-use std::sync::mpsc::{channel, Sender, Receiver};
 use std::sync::{Mutex, Arc};
 use std::time::{Instant, Duration, SystemTime};
 use std::cmp::Ordering;
 use std::ops::Add;
+
+use crossbeam_channel::{unbounded, Sender, Receiver};
 
 use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::metrics::{SchedulerMetrics};
@@ -146,8 +147,8 @@ impl<'a> Runtime<'a> {
 
     fn start(&self) -> Run<'a> {
         let scheduler = Scheduler::with_config(self.config.clone());
-        let events = channel();
-        let actions = channel();
+        let events = unbounded();
+        let actions = unbounded();
 
         let sender = actions.0.clone();
         start_actor_runtime(self.pool, scheduler, events, actions);

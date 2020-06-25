@@ -1,6 +1,6 @@
 [package]
 name = "uppercut"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["sergey-melnychuk"]
 edition = "2018"
 description = "Small and simple actor model implementation"
@@ -10,7 +10,9 @@ homepage = "https://github.com/sergey-melnychuk/uppercut"
 repository = "https://github.com/sergey-melnychuk/uppercut"
 
 [dependencies]
+num_cpus = "1.13.0"
 core_affinity = "0.5.10"
+crossbeam-channel = "0.4.2"
 
 [dev-dependencies]
 bencher = "0.1.5"
