@@ -16,7 +16,7 @@ Model and abstractions used in this document are very similar, like messages
 and envelopes.
 
 Fundamental entities are:
-- Address - logical point where Envelop can be delivered
+- Address - logical point where Envelope can be delivered
 - Envelope - a container to hold:
   - Message content
     - no restrictions apply on message content
@@ -27,9 +27,11 @@ Fundamental entities are:
     - access or change own internal state
     - create (spawn) new Actors
     - send Envelope to a known Address
+- Environment - a machinery that delivers Envelopes to Actors
+  - collects (hopefully) meaningful metrics along the way
 
 Important comments:
-- Envelop makes no restrictions on Message content
+- Envelope makes no restrictions on Message content
   - Post Office: anyone can send anything to a known Address
   - This means that generic Actor can receive anything
   - Which in turn means that such Actor cannot be type-safe!
@@ -59,7 +61,7 @@ Envelope to an Address from the outside - otherwise no single Actor can ever act
 as in order to act, an Envelope must be received first. In order to be received, 
 an Envelope then must be sent first!
 
-With provided ways of (1) spawning an actor in a declarative manner (as actors can
+With provided ways of (1) spawning an actor in declarative manner (as actors can
 be created only inside the Environment, not outside) under given Address and (2)
 sending an Envelope to a given Address, it must be possible to define initial 
 configuration of the Environment: set of Actor blueprints and initial set of 
@@ -67,7 +69,7 @@ Envelopes to be sent to respective Addresses.
 
 After that, what's left is to somehow start the Environment (actor runtime), and 
 allow it to have access to required resources. If failed to start, the initial
-configuration remains static, thus can be restarted any required number of attemts.
+configuration remains static, thus can be restarted any required number of attempts.
 
 #### Open questions
 
@@ -90,12 +92,11 @@ configuration remains static, thus can be restarted any required number of attem
      - synchronization required to actually produce value
    - `Stream` of events as an output channel from the Environment?
      - half-actor / half-iterable?
-   - `Channel` for Actor to publish result to
+   - `Channel` for Actor to publish result to (see 'basis' example).
 1. When a new Actor is spawned under the taken Address:
    - Not Environment's problem - but User's one
-   - If trying to spawn under taken Address
-     - "new" Actor vanishes without any trace
-   - Want guarantees? - Make it part of the protocol:
+   - Simply ignore an attempt to spawn an Actor under taken Address
+   - Any guarantees must be part of the application level protocol:
      - create Actor 'child'
      - send 'ping' to 'child'
      - receive 'pong' from 'child'
@@ -103,7 +104,7 @@ configuration remains static, thus can be restarted any required number of attem
 
 #### Implementation tasks
 
-1. Actor failure handling
+1. TODO Actor failure handling
    - `std::panic::catch_unwind` ([doc](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html)) + `AssertUnwindSafe` ([doc](https://doc.rust-lang.org/std/panic/struct.AssertUnwindSafe.html)) 
    - if recoverable - recovery to stable state (simply ignore and carry on)
      - recoverable == can carry on performing the task
@@ -116,34 +117,40 @@ configuration remains static, thus can be restarted any required number of attem
      - e.g. failed to bind a listener to specific port number
      - propagate where? to "parent"/"supervisor"? no such concepts exist here yet!
      - TODO this section needs extra attention
-1. Shutdown an Actor under specific Address
+1. DONE Shutdown an Actor under specific Address
      - send a message asking the Actor to stop
      - ask Scheduler to mark Address as free/unoccupied
-1. Shutdown the Environment
+1. DONE Shutdown the Environment
+   - DONE immediate:
+     - stop all actors
+     - drop all undelivered messages
    - graceful (wait for all tasks to complete)?
-     - long-running tasks?
-     - tasks that spawn another tasks?
-     - seems like proper shutdown is problem/solution-specific
-1. IO-bridge abstraction
+     - impossible in general case, Actor Model is non-deterministic
+     - a graceful shutdown is application-specific
+1. TODO IO-bridge abstraction
+   - server listens for incoming messages from remote actors
+   - clients send messages to remote actors
    - event loop running on a different thread
      - connected to main thread pool via channels
      - mio-tcp-server as a starting point, including multithreaded implementation
-   - TCP/UDP sockets: MIO/epoll
-   - filesystem: TBD
-1. Full implementation of WebSocket server on top of Actors
+   - filesystem access
+     - configuration
+     - logging
+     - persistence
+1. TODO Full implementation of HTTP/WebSocket server on top of Actors
    - TCP listener is an Actor
    - connection listeners are Actors
      - parsing bytes to HTTP/WebSocket frames
      - serializing WebSocket frames to bytes
-1. Define beneficial use-cases and provide example implementations
+1. TODO Define beneficial use-cases and provide example implementations
    - distributed hash-table
    - distributed lock service
-     - PAXOS
+     - PAXOS and friends
    - large-scale stream processing
      - persistence?
      - idempotence?
      - fault-tolerance? (e.g. spark-style checkpoints)
-1. Raw Actors:
+1. TODO Raw Actors:
    - Message is just a byte buffer
      - serialize and send byte buffer
      - receive byte buffer and try deserialize
@@ -162,4 +169,3 @@ configuration remains static, thus can be restarted any required number of attem
 https://www.ijcai.org/Proceedings/73/Papers/027B.pdf)
 
 1. Wikipedia: [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
-    
