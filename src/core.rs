@@ -324,11 +324,12 @@ fn event_loop(actions_rx: Receiver<Action>,
             }
         }
 
-        metrics.tick += 1;
+        metrics.ticks += 1;
         if start.elapsed() >= scheduler.config.metric_reporting_interval {
             let now = SystemTime::now();
             metrics.at = now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
             metrics.millis = start.elapsed().as_millis() as u64;
+            metrics.actors = scheduler.active.len() as u64;
 
             // Feature required: configurable metric reporting
             pool_link(Box::new(move || println!("{:?}", metrics.clone())));
