@@ -127,21 +127,27 @@ configuration remains static, thus can be restarted any required number of attem
    - graceful (wait for all tasks to complete)?
      - impossible in general case, Actor Model is non-deterministic
      - a graceful shutdown is application-specific
-1. TODO IO-bridge abstraction
-   - server listens for incoming messages from remote actors
-   - clients send messages to remote actors
-   - event loop running on a different thread
-     - connected to main thread pool via channels
-     - mio-tcp-server as a starting point, including multithreaded implementation
-   - filesystem access
-     - configuration
-     - logging
-     - persistence
-1. TODO Full implementation of HTTP/WebSocket server on top of Actors
+1. TODO Basic implementation of TCP/HTTP/WebSocket server on top of Actors
    - TCP listener is an Actor
    - connection listeners are Actors
      - parsing bytes to HTTP/WebSocket frames
      - serializing WebSocket frames to bytes
+1. TODO IO-bridge abstraction (based on TCP/... server impl)
+   - IO-bridge runs on separate thread-pool (IO-bound)
+   - TCP server listens for incoming messages from remote actors
+   - TCP clients send messages to remote actors
+   - filesystem access
+     - configuration
+     - logging
+     - persistence
+1. TODO Remote Actors (based on IO-bridge)
+   - Address is still regular String: local-actor-address@host:port
+     - Example: connection-0123@192.168.1.2:9000
+   - Message must be (de)serializable to (from) bytes (serde/bincode/...)
+   - Sending: send Envelope with `Vec<u8>` to Remote Actor
+     - Environment detects that such an Envelope must go through IO-bridge
+   - Receiving: IO-bridge reads from TCP connection
+     - Environment forwards received buffer to local Actor address
 1. TODO Define beneficial use-cases and provide example implementations
    - distributed hash-table
    - distributed lock service
@@ -162,6 +168,24 @@ configuration remains static, thus can be restarted any required number of attem
      - `fn(T) -> Vec<u8>` 
      - or `fn(T, &mut [u8]) -> Result<usize>` (potentially no allocation)
      - [bincode](https://github.com/servo/bincode)
+1. TODO Metrics reporting:
+   - Default behaviour: dump metrics to stdout with configurable interval
+   - Allow reporting metrics to graphite/prometheus
+1. TODO Insights into Environment internals
+   - Extend existing metric collection approach
+   - Allow narrowing down tracing to specific Address
+     - get sent/received/processed rate
+     - get dump of specific messages processed by the Actor
+     - get dump of Actor's current internal state
+   - Consider running such actors on standalone thread-pools
+     - minimize tracing overhead for the whole system
+     - Actor can be easily migrated between thread-pools
+   - Dashboard representing current state of the Environment?
+     - Standalone web-page?
+     - Grafana dashboard?
+1. TODO Test-kit:
+   - Allow probing for specific messages at specific Address
+   - Allow accessing Actor's internal state (for tests only)
 
 #### References
 
