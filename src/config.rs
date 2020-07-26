@@ -2,7 +2,7 @@ use std::time::Duration;
 
 #[derive(Default, Copy, Clone)]
 pub struct Config {
-    pub(crate) scheduler: SchedulerConfig,
+    pub scheduler: SchedulerConfig,
 }
 
 impl Config {
@@ -16,11 +16,11 @@ impl Config {
 #[derive(Copy, Clone)]
 pub struct SchedulerConfig {
     // Maximum number of envelopes an actor can process at single scheduled execution
-    pub(crate) actor_throughput: usize,
-    pub(crate) metric_reporting_interval: Duration,
-    pub(crate) delay_precision: Duration,
-    pub(crate) actor_worker_threads: usize,
-    pub(crate) extra_worker_threads: usize,
+    pub actor_throughput: usize,
+    pub metric_reporting_interval: Duration,
+    pub delay_precision: Duration,
+    pub actor_worker_threads: usize,
+    pub extra_worker_threads: usize,
 }
 
 impl Default for SchedulerConfig {
