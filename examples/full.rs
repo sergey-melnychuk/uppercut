@@ -178,7 +178,7 @@ fn main() {
     let cfg = Config::new(
         SchedulerConfig::with_total_threads(cores),
         RemoteConfig::default());
-    let sys = System::new(cfg);
+    let sys = System::new(&cfg);
     let run = sys.run(&pool).unwrap();
 
     const SIZE: usize = 100_000;

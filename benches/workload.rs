@@ -63,7 +63,7 @@ fn counter(b: &mut Bencher) {
     let cfg = Config::default();
     let pool: ThreadPool = ThreadPool::for_config(&cfg);
     b.iter(|| {
-        let sys = System::new(cfg);
+        let sys = System::new(&cfg);
         let run = sys.run(&pool).unwrap();
 
         let (tx, rx) = channel();
@@ -104,7 +104,7 @@ fn chain(b: &mut Bencher) {
     let cfg = Config::default();
     let pool: ThreadPool = ThreadPool::for_config(&cfg);
     b.iter(|| {
-        let sys = System::new(cfg);
+        let sys = System::new(&cfg);
         let run = sys.run(&pool).unwrap();
 
         let (tx, rx) = channel();

@@ -162,9 +162,9 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(config: Config) -> System {
+    pub fn new(config: &Config) -> System {
         System {
-            config
+            config: config.clone()
         }
     }
 
@@ -222,8 +222,7 @@ impl<'a> Run<'a> {
 }
 
 fn worker_loop(tx: Sender<Action>,
-               rx: Arc<Mutex<Receiver<Event>>>,
-               config: SchedulerConfig) {
+               rx: Arc<Mutex<Receiver<Event>>>) {
     let mut memory: Memory<Envelope> = Memory::default();
     loop {
         let event = rx.lock().unwrap().try_recv();
