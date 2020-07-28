@@ -228,12 +228,8 @@ fn worker_loop(tx: Sender<Action>,
         let event = rx.lock().unwrap().try_recv();
         if let Ok(x) = event {
             match x {
-                Event::Mail { tag, mut actor, mut queue } => {
+                Event::Mail { tag, mut actor, queue } => {
                     memory.own = tag.clone();
-                    if queue.len() > config.actor_throughput {
-                        let remaining = queue.split_off(config.actor_throughput);
-                        tx.send(Action::Queue { tag: tag.clone(), queue: remaining }).unwrap();
-                    }
                     for envelope in queue.into_iter() {
                         actor.receive(envelope, &mut memory);
                     }
@@ -275,14 +271,25 @@ fn event_loop(actions_rx: Receiver<Action>,
                         scheduler.actors.insert(tag, actor);
                     }
                 },
-                Action::Queue { tag, queue } => {
+                Action::Queue { tag, mut queue } => {
+                    let throughput = scheduler.config.actor_throughput;
                     if scheduler.active.contains(&tag) {
                         metrics.queues += 1;
                         metrics.messages += queue.len() as u64;
                         match scheduler.actors.remove(&tag) {
-                            Some(actor) => {
+                            Some(actor) if queue.len() <= throughput => {
                                 let event = Event::Mail { tag, actor, queue };
                                 events_tx.send(event).unwrap();
+                            },
+                            Some(actor) => {
+                                let head = queue.split_off(throughput);
+                                let event = Event::Mail { tag: tag.clone(), actor, queue: head };
+                                events_tx.send(event).unwrap();
+
+                                scheduler.queue
+                                    .entry(tag.clone())
+                                    .or_default()
+                                    .extend(queue.into_iter());
                             },
                             None => {
                                 scheduler.queue
@@ -351,10 +358,9 @@ fn start_actor_runtime(pool: &ThreadPool,
     for _ in 0..thread_count {
         let rx = Arc::clone(&events_rx);
         let tx = actions_tx.clone();
-        let config = scheduler.config.clone();
 
         pool.submit(move || {
-            worker_loop(tx, rx, config);
+            worker_loop(tx, rx);
         });
     }
 
