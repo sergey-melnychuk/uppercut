@@ -250,6 +250,7 @@ fn event_loop(actions_rx: Receiver<Action>,
               events_tx: Sender<Event>,
               mut scheduler: Scheduler,
               pool_link: impl Fn(Runnable)) {
+    let throughput = scheduler.config.actor_throughput;
     let mut metrics = SchedulerMetrics::default();
     let mut start = Instant::now();
     loop {
@@ -262,8 +263,8 @@ fn event_loop(actions_rx: Receiver<Action>,
                         metrics.returns += 1;
                         let mut queue = scheduler.queue.remove(&tag).unwrap_or_default();
                         if !queue.is_empty() {
-                            if queue.len() > scheduler.config.actor_throughput {
-                                let remaining = queue.split_off(scheduler.config.actor_throughput);
+                            if queue.len() > throughput {
+                                let remaining = queue.split_off(throughput);
                                 scheduler.queue.insert(tag.clone(), remaining);
                             }
                             actions_tx.send(Action::Queue { tag: tag.clone(), queue }).unwrap();
@@ -272,7 +273,6 @@ fn event_loop(actions_rx: Receiver<Action>,
                     }
                 },
                 Action::Queue { tag, mut queue } => {
-                    let throughput = scheduler.config.actor_throughput;
                     if scheduler.active.contains(&tag) {
                         metrics.queues += 1;
                         metrics.messages += queue.len() as u64;
@@ -282,14 +282,14 @@ fn event_loop(actions_rx: Receiver<Action>,
                                 events_tx.send(event).unwrap();
                             },
                             Some(actor) => {
-                                let head = queue.split_off(throughput);
-                                let event = Event::Mail { tag: tag.clone(), actor, queue: head };
+                                let remaining = queue.split_off(throughput);
+                                let event = Event::Mail { tag: tag.clone(), actor, queue };
                                 events_tx.send(event).unwrap();
 
                                 scheduler.queue
                                     .entry(tag.clone())
                                     .or_default()
-                                    .extend(queue.into_iter());
+                                    .extend(remaining.into_iter());
                             },
                             None => {
                                 scheduler.queue
