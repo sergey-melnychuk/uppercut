@@ -162,9 +162,9 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(config: Config) -> System {
+    pub fn new(config: &Config) -> System {
         System {
-            config
+            config: config.clone()
         }
     }
 
@@ -222,19 +222,14 @@ impl<'a> Run<'a> {
 }
 
 fn worker_loop(tx: Sender<Action>,
-               rx: Arc<Mutex<Receiver<Event>>>,
-               config: SchedulerConfig) {
+               rx: Arc<Mutex<Receiver<Event>>>) {
     let mut memory: Memory<Envelope> = Memory::default();
     loop {
         let event = rx.lock().unwrap().try_recv();
         if let Ok(x) = event {
             match x {
-                Event::Mail { tag, mut actor, mut queue } => {
+                Event::Mail { tag, mut actor, queue } => {
                     memory.own = tag.clone();
-                    if queue.len() > config.actor_throughput {
-                        let remaining = queue.split_off(config.actor_throughput);
-                        tx.send(Action::Queue { tag: tag.clone(), queue: remaining }).unwrap();
-                    }
                     for envelope in queue.into_iter() {
                         actor.receive(envelope, &mut memory);
                     }
@@ -255,6 +250,7 @@ fn event_loop(actions_rx: Receiver<Action>,
               events_tx: Sender<Event>,
               mut scheduler: Scheduler,
               pool_link: impl Fn(Runnable)) {
+    let throughput = scheduler.config.actor_throughput;
     let mut metrics = SchedulerMetrics::default();
     let mut start = Instant::now();
     loop {
@@ -266,39 +262,45 @@ fn event_loop(actions_rx: Receiver<Action>,
                     if scheduler.active.contains(&tag) {
                         metrics.returns += 1;
                         let mut queue = scheduler.queue.remove(&tag).unwrap_or_default();
-                        if !queue.is_empty() {
-                            if queue.len() > scheduler.config.actor_throughput {
-                                let remaining = queue.split_off(scheduler.config.actor_throughput);
+                        if queue.is_empty() {
+                            scheduler.actors.insert(tag, actor);
+                        } else {
+                            if queue.len() > throughput {
+                                let remaining = queue.split_off(throughput);
                                 scheduler.queue.insert(tag.clone(), remaining);
                             }
-                            actions_tx.send(Action::Queue { tag: tag.clone(), queue }).unwrap();
+                            let event = Event::Mail { tag, actor, queue };
+                            events_tx.send(event).unwrap();
                         }
-                        scheduler.actors.insert(tag, actor);
                     }
                 },
-                Action::Queue { tag, queue } => {
+                Action::Queue { tag, queue: added } => {
                     if scheduler.active.contains(&tag) {
                         metrics.queues += 1;
-                        metrics.messages += queue.len() as u64;
-                        match scheduler.actors.remove(&tag) {
-                            Some(actor) => {
-                                let event = Event::Mail { tag, actor, queue };
-                                events_tx.send(event).unwrap();
-                            },
-                            None => {
-                                scheduler.queue
-                                    .entry(tag.clone())
-                                    .or_default()
-                                    .extend(queue.into_iter());
+                        metrics.messages += added.len() as u64;
+
+                        let mut queue = scheduler.queue.remove(&tag).unwrap_or_default();
+                        queue.extend(added.into_iter());
+
+                        if let Some(actor) = scheduler.actors.remove(&tag) {
+                            if queue.len() > throughput {
+                                let remaining = queue.split_off(throughput);
+                                scheduler.queue.insert(tag.clone(), remaining);
                             }
+
+                            let event = Event::Mail { tag: tag.clone(), actor, queue };
+                            events_tx.send(event).unwrap();
+                        } else {
+                            scheduler.queue.insert(tag, queue);
                         }
                     }
                 },
                 Action::Spawn { tag, actor } => {
                     if !scheduler.active.contains(&tag) {
                         metrics.spawns += 1;
+                        scheduler.active.insert(tag.clone());
                         scheduler.actors.insert(tag.clone(), actor);
-                        scheduler.active.insert(tag);
+                        scheduler.queue.insert(tag.clone(), Vec::with_capacity(32));
                     }
                 },
                 Action::Delay { entry } => {
@@ -306,6 +308,7 @@ fn event_loop(actions_rx: Receiver<Action>,
                     scheduler.tasks.push(entry);
                 },
                 Action::Stop { tag } => {
+                    metrics.stops += 1;
                     scheduler.active.remove(&tag);
                     scheduler.actors.remove(&tag);
                     scheduler.queue.remove(&tag);
@@ -324,11 +327,12 @@ fn event_loop(actions_rx: Receiver<Action>,
             }
         }
 
-        metrics.tick += 1;
+        metrics.ticks += 1;
         if start.elapsed() >= scheduler.config.metric_reporting_interval {
             let now = SystemTime::now();
             metrics.at = now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
             metrics.millis = start.elapsed().as_millis() as u64;
+            metrics.actors = scheduler.active.len() as u64;
 
             // Feature required: configurable metric reporting
             pool_link(Box::new(move || println!("{:?}", metrics.clone())));
@@ -351,10 +355,9 @@ fn start_actor_runtime(pool: &ThreadPool,
     for _ in 0..thread_count {
         let rx = Arc::clone(&events_rx);
         let tx = actions_tx.clone();
-        let config = scheduler.config.clone();
 
         pool.submit(move || {
-            worker_loop(tx, rx, config);
+            worker_loop(tx, rx);
         });
     }
 

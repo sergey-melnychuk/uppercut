@@ -25,13 +25,13 @@ use crate::pool::ThreadPool;
 
 const ANSWER: usize = 42;
 
-struct Message(Sender<usize>);
+struct Init(Sender<usize>);
 
 struct Test(usize);
 
 impl AnyActor for Test {
     fn receive(&mut self, envelope: Envelope, _sender: &mut dyn AnySender) {
-        if let Some(message) = envelope.message.downcast_ref::<Message>() {
+        if let Some(message) = envelope.message.downcast_ref::<Init>() {
             message.0.send(self.0).unwrap();
         }
     }
@@ -72,7 +72,7 @@ impl AnyActor for Counter {
 fn with_run<T: Eq + Debug, E, F: FnOnce(&Run) -> Result<T, E>>(expected: T, f: F) -> Result<(), E> {
     let cfg = Config::default();
     let pool: ThreadPool = ThreadPool::for_config(&cfg);
-    let sys = System::new(cfg);
+    let sys = System::new(&cfg);
     let run = sys.run(&pool).unwrap();
     let got = f(&run);
     run.shutdown();
@@ -89,7 +89,7 @@ fn sent_message_received() -> Result<(), RecvTimeoutError> {
         run.spawn("test", || Box::new(Test(ANSWER)));
 
         let (tx, rx) = channel();
-        let env = Envelope::of(Message(tx), "");
+        let env = Envelope::of(Init(tx), "");
         run.send("test", env);
 
         rx.recv_timeout(TIMEOUT)
@@ -103,7 +103,7 @@ fn forwarded_message_received() -> Result<(), RecvTimeoutError> {
         run.spawn("proxy", || Box::new(Proxy { target: "test".to_string() }));
 
         let (tx, rx) = channel();
-        let env = Envelope::of(Message(tx), "");
+        let env = Envelope::of(Init(tx), "");
         run.send("proxy", env);
 
         rx.recv_timeout(TIMEOUT)
@@ -116,7 +116,7 @@ fn delayed_message_received() -> Result<(), RecvTimeoutError> {
         run.spawn("test", || Box::new(Test(ANSWER)));
 
         let (tx, rx) = channel();
-        let env = Envelope::of(Message(tx), "");
+        let env = Envelope::of(Init(tx), "");
 
         const DELAY: Duration = Duration::from_millis(100);
         run.delay("test", env, DELAY);
@@ -135,5 +135,37 @@ fn own_message_received() -> Result<(), RecvTimeoutError> {
         run.send("test", env);
 
         rx.recv_timeout(TIMEOUT)
+    })
+}
+
+struct Replier(Sender<usize>);
+
+impl AnyActor for Replier {
+    fn receive(&mut self, envelope: Envelope, _sender: &mut dyn AnySender) {
+        if let Some(n) = envelope.message.downcast_ref::<usize>() {
+            self.0.send(*n).unwrap();
+        }
+    }
+}
+
+#[test]
+fn message_order_perceived() -> Result<(), RecvTimeoutError> {
+    let n = 10;
+    let seq: Vec<usize> = (1..=n).into_iter().collect();
+    with_run(seq, |run| {
+        let (tx, rx) = channel();
+        run.spawn("test", || Box::new(Replier(tx)));
+
+        for x in 1..=n {
+            let e = Envelope::of(x, "");
+            run.send("test", e);
+        }
+
+        let mut vec: Vec<usize> = Vec::with_capacity(n);
+        for _ in 0..n {
+            let x = rx.recv_timeout(TIMEOUT)?;
+            vec.push(x);
+        }
+        Ok(vec)
     })
 }

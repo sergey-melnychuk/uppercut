@@ -4,7 +4,7 @@ use std::time::{Instant, Duration};
 extern crate uppercut;
 use uppercut::api::{AnyActor, AnySender, Envelope};
 use uppercut::core::System;
-use uppercut::config::{Config, SchedulerConfig};
+use uppercut::config::{Config, SchedulerConfig, RemoteConfig};
 use uppercut::pool::ThreadPool;
 
 extern crate num_cpus;
@@ -175,8 +175,10 @@ fn main() {
     let cores = num_cpus::get();
     let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 worker thread
 
-    let cfg = Config::new(SchedulerConfig::with_total_threads(cores));
-    let sys = System::new(cfg);
+    let cfg = Config::new(
+        SchedulerConfig::with_total_threads(cores),
+        RemoteConfig::default());
+    let sys = System::new(&cfg);
     let run = sys.run(&pool).unwrap();
 
     const SIZE: usize = 100_000;

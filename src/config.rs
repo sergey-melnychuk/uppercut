@@ -1,26 +1,43 @@
 use std::time::Duration;
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Clone)]
 pub struct Config {
-    pub(crate) scheduler: SchedulerConfig,
+    pub scheduler: SchedulerConfig,
+    pub remote: RemoteConfig,
 }
 
 impl Config {
-    pub fn new(scheduler: SchedulerConfig) -> Config {
+    pub fn new(scheduler: SchedulerConfig, remote: RemoteConfig) -> Config {
         Config {
             scheduler,
+            remote,
         }
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
+pub struct RemoteConfig {
+    pub host: String,
+    pub port: u16,
+}
+
+impl Default for RemoteConfig {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_string(),
+            port: 4242,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct SchedulerConfig {
     // Maximum number of envelopes an actor can process at single scheduled execution
-    pub(crate) actor_throughput: usize,
-    pub(crate) metric_reporting_interval: Duration,
-    pub(crate) delay_precision: Duration,
-    pub(crate) actor_worker_threads: usize,
-    pub(crate) extra_worker_threads: usize,
+    pub actor_throughput: usize,
+    pub metric_reporting_interval: Duration,
+    pub delay_precision: Duration,
+    pub actor_worker_threads: usize,
+    pub extra_worker_threads: usize,
 }
 
 impl Default for SchedulerConfig {
