@@ -262,49 +262,45 @@ fn event_loop(actions_rx: Receiver<Action>,
                     if scheduler.active.contains(&tag) {
                         metrics.returns += 1;
                         let mut queue = scheduler.queue.remove(&tag).unwrap_or_default();
-                        if !queue.is_empty() {
+                        if queue.is_empty() {
+                            scheduler.actors.insert(tag, actor);
+                        } else {
                             if queue.len() > throughput {
                                 let remaining = queue.split_off(throughput);
                                 scheduler.queue.insert(tag.clone(), remaining);
                             }
-                            actions_tx.send(Action::Queue { tag: tag.clone(), queue }).unwrap();
+                            let event = Event::Mail { tag, actor, queue };
+                            events_tx.send(event).unwrap();
                         }
-                        scheduler.actors.insert(tag, actor);
                     }
                 },
-                Action::Queue { tag, mut queue } => {
+                Action::Queue { tag, queue: added } => {
                     if scheduler.active.contains(&tag) {
                         metrics.queues += 1;
-                        metrics.messages += queue.len() as u64;
-                        match scheduler.actors.remove(&tag) {
-                            Some(actor) if queue.len() <= throughput => {
-                                let event = Event::Mail { tag, actor, queue };
-                                events_tx.send(event).unwrap();
-                            },
-                            Some(actor) => {
-                                let remaining = queue.split_off(throughput);
-                                let event = Event::Mail { tag: tag.clone(), actor, queue };
-                                events_tx.send(event).unwrap();
+                        metrics.messages += added.len() as u64;
 
-                                scheduler.queue
-                                    .entry(tag.clone())
-                                    .or_default()
-                                    .extend(remaining.into_iter());
-                            },
-                            None => {
-                                scheduler.queue
-                                    .entry(tag.clone())
-                                    .or_default()
-                                    .extend(queue.into_iter());
+                        let mut queue = scheduler.queue.remove(&tag).unwrap_or_default();
+                        queue.extend(added.into_iter());
+
+                        if let Some(actor) = scheduler.actors.remove(&tag) {
+                            if queue.len() > throughput {
+                                let remaining = queue.split_off(throughput);
+                                scheduler.queue.insert(tag.clone(), remaining);
                             }
+
+                            let event = Event::Mail { tag: tag.clone(), actor, queue };
+                            events_tx.send(event).unwrap();
+                        } else {
+                            scheduler.queue.insert(tag, queue);
                         }
                     }
                 },
                 Action::Spawn { tag, actor } => {
                     if !scheduler.active.contains(&tag) {
                         metrics.spawns += 1;
+                        scheduler.active.insert(tag.clone());
                         scheduler.actors.insert(tag.clone(), actor);
-                        scheduler.active.insert(tag);
+                        scheduler.queue.insert(tag.clone(), Vec::with_capacity(32));
                     }
                 },
                 Action::Delay { entry } => {
@@ -312,6 +308,7 @@ fn event_loop(actions_rx: Receiver<Action>,
                     scheduler.tasks.push(entry);
                 },
                 Action::Stop { tag } => {
+                    metrics.stops += 1;
                     scheduler.active.remove(&tag);
                     scheduler.actors.remove(&tag);
                     scheduler.queue.remove(&tag);
