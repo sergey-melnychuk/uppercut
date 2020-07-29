@@ -117,5 +117,5 @@ fn chain(b: &mut Bencher) {
     });
 }
 
-benchmark_group!(benches, counter, chain);
-benchmark_main!(benches);
+benchmark_group!(workload, counter, chain);
+benchmark_main!(workload);

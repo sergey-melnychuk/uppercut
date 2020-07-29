@@ -21,3 +21,6 @@ bencher = "0.1.5"
 name = "workload"
 harness = false
 
+[[bench]]
+name = "mailbox"
+harness = false
