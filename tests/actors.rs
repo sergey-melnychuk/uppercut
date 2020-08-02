@@ -10,6 +10,9 @@ mod config;
 #[path = "../src/metrics.rs"]
 mod metrics;
 
+#[path = "../src/remote/mod.rs"]
+mod remote;
+
 #[path = "../src/core.rs"]
 mod core;
 
