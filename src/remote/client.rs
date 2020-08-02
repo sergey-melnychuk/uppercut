@@ -9,6 +9,7 @@ use mio::net::TcpStream;
 use parser_combinators::stream::ByteStream;
 use std::collections::HashMap;
 
+use crate::api::{AnyActor, AnySender, Envelope};
 
 // TODO make poll timeout, buffer sizes, pooling, etc configurable by introducing ClientConfig
 
@@ -153,5 +154,22 @@ impl Connection {
             }
         }
         bytes_received
+    }
+}
+
+pub struct StartClient;
+
+struct Loop;
+
+impl AnyActor for Client {
+    fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
+        if let Some(_) = envelope.message.downcast_ref::<Loop>() {
+            self.poll(None);
+        } else if let Some(_envelope) = envelope.message.downcast_ref::<Envelope>() {
+            //
+        } else if let Some(_) = envelope.message.downcast_ref::<StartClient>() {
+            let me = sender.myself();
+            sender.send(&me, Envelope::of(Loop));
+        }
     }
 }

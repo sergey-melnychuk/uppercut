@@ -10,15 +10,16 @@ struct PingPong {
 
 impl AnyActor for PingPong {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
-        if let Some(s) = envelope.message.downcast_ref::<&[u8]>() {
+        println!("ping-pong: receive");
+        if let Some(s) = envelope.message.downcast_ref::<Vec<u8>>() {
             self.count += 1;
 
             println!("{}: {:?}", sender.me(), s);
-            if s == b"ping\n" {
-                let r = Envelope::of("pong".to_string(), sender.me());
+            if s == b"ping" {
+                let r = Envelope::of(b"pong".to_vec()).from(sender.me());
                 sender.send(&envelope.from, r);
-            } else if s == b"pong\n" {
-                let r = Envelope::of("ping".to_string(), sender.me());
+            } else if s == b"pong" {
+                let r = Envelope::of(b"ping".to_vec()).from(sender.me());
                 sender.send(&envelope.from, r);
             }
         }
@@ -39,6 +40,9 @@ fn main() {
 
     run1.spawn_default::<PingPong>("pong");
 
+    // run1.spawn_default::<PingPong>("ping");
+    // run1.send("pong", Envelope::of(b"ping".to_vec()).from("ping"));
+
     // sys 2
 
     let cfg2 = Config::new(
@@ -48,7 +52,7 @@ fn main() {
     let run2 = sys2.run(&pool).unwrap();
 
     run2.spawn_default::<PingPong>("ping");
-    run2.send("pong@127.0.0.1:9001", Envelope::of(b"ping", "ping"));
+    run2.send("pong@127.0.0.1:9001", Envelope::of(b"ping".to_vec()).from("ping"));
 
     std::thread::park();
 }

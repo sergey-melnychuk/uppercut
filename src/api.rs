@@ -20,6 +20,7 @@ pub trait AnySender {
 pub struct Envelope {
     pub message: Box<dyn Any + Send>,
     pub from: String,
+    pub to: String,
 }
 
 impl Default for Envelope {
@@ -27,15 +28,27 @@ impl Default for Envelope {
         Envelope {
             message: Box::new(()),
             from: String::default(),
+            to: String::default(),
         }
     }
 }
 
 impl Envelope {
-    pub fn of<T: Any + Send>(message: T, from: &str) -> Envelope {
+    pub fn of<T: Any + Send>(message: T) -> Envelope {
         Envelope {
             message: Box::new(message),
-            from: from.to_string(),
+            from: String::default(),
+            to: String::default(),
         }
+    }
+
+    pub fn from(mut self, from: &str) -> Self {
+        self.from = from.to_string();
+        self
+    }
+
+    pub fn to(mut self, to: &str) -> Self {
+        self.to = to.to_string();
+        self
     }
 }

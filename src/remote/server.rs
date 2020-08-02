@@ -9,7 +9,7 @@ use parser_combinators::stream::ByteStream;
 
 use crate::api::{AnyActor, AnySender, Envelope};
 
-pub struct Start;
+pub struct StartServer;
 
 struct Loop;
 struct Connect { socket: Option<TcpStream>, keep_alive: bool }
@@ -60,7 +60,7 @@ impl AnyActor for Server {
                                 let tag = format!("{}", self.counter);
                                 sender.spawn(&tag, || Box::new(Connection::default()));
                                 let connect = Connect { socket: Some(socket), keep_alive: true };
-                                sender.send(&tag, Envelope::of(connect, ""));
+                                sender.send(&tag, Envelope::of(connect));
                             } else {
                                 break
                             }
@@ -69,15 +69,15 @@ impl AnyActor for Server {
                     token => {
                         let tag = format!("{}", token.0);
                         let work = Work { is_readable: event.is_readable(), is_writable: event.is_writable() };
-                        sender.send(&tag, Envelope::of(work, ""));
+                        sender.send(&tag, Envelope::of(work));
                     }
                 }
             }
             let me = sender.myself();
-            sender.send(&me, Envelope::of(Loop, ""));
-        } else if let Some(_) = envelope.message.downcast_ref::<Start>() {
+            sender.send(&me, Envelope::of(Loop));
+        } else if let Some(_) = envelope.message.downcast_ref::<StartServer>() {
             let me = sender.myself();
-            sender.send(&me, Envelope::of(Loop, ""));
+            sender.send(&me, Envelope::of(Loop));
         }
     }
 }

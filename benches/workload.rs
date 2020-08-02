@@ -16,6 +16,9 @@ mod config;
 #[path = "../src/metrics.rs"]
 mod metrics;
 
+#[path = "../src/remote/mod.rs"]
+mod remote;
+
 #[path = "../src/core.rs"]
 mod core;
 
@@ -45,11 +48,11 @@ fn counter(b: &mut Bencher) {
                     Protocol::Init(limit, tx) => {
                         self.limit = *limit;
                         self.tx = Some(tx.to_owned());
-                        sender.send(&me, Envelope::of(Protocol::Hit, &me));
+                        sender.send(&me, Envelope::of(Protocol::Hit).from(&me));
                     },
                     Protocol::Hit if self.count < self.limit => {
                         self.count += 1;
-                        sender.send(&me, Envelope::of(Protocol::Hit, &me));
+                        sender.send(&me, Envelope::of(Protocol::Hit).from(&me));
                     },
                     Protocol::Hit => {
                         self.tx.take().unwrap().send(self.count).unwrap();
@@ -68,7 +71,7 @@ fn counter(b: &mut Bencher) {
 
         let (tx, rx) = channel();
         run.spawn_default::<Test>("test");
-        run.send("test", Envelope::of(Protocol::Init(1000, tx), ""));
+        run.send("test", Envelope::of(Protocol::Init(1000, tx)));
 
         rx.recv().unwrap();
 
@@ -90,7 +93,7 @@ fn chain(b: &mut Bencher) {
                 if *hits < LENGTH {
                     let tag = format!("{}", hits + 1);
                     sender.spawn(&tag, || Box::new(Chain));
-                    let env = Envelope::of(Hit(tx.to_owned(), hits + 1), "");
+                    let env = Envelope::of(Hit(tx.to_owned(), hits + 1));
                     sender.send(&tag, env);
                 } else {
                     tx.send(*hits).unwrap();
@@ -109,7 +112,7 @@ fn chain(b: &mut Bencher) {
 
         let (tx, rx) = channel();
         run.spawn_default::<Chain>("0");
-        run.send("0", Envelope::of(Hit(tx, 0), ""));
+        run.send("0", Envelope::of(Hit(tx, 0)));
 
         rx.recv().unwrap();
 

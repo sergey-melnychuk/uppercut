@@ -12,8 +12,8 @@ use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::metrics::{SchedulerMetrics};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
-use crate::remote::server::{Server, Start};
-use crate::remote::client::Client;
+use crate::remote::server::{Server, StartServer};
+use crate::remote::client::{Client, StartClient};
 
 impl AnySender for Memory<Envelope> {
     fn me(&self) -> &str {
@@ -160,11 +160,14 @@ impl<'a> Runtime<'a> {
 
         if remote.enabled {
 
-            let listener = Server::listen(&remote.listening)?;
-            run.spawn("server", move || Box::new(listener));
-            run.send("server", Envelope::of(Start, ""));
+            let server = Server::listen(&remote.listening)?;
+            run.spawn("server", move || Box::new(server));
+            run.send("server", Envelope::of(StartServer));
 
             // TODO start client actor here
+            let client = Client::new();
+            run.spawn("client", move || Box::new(client));
+            run.send("client", Envelope::of(StartClient));
 
         }
 
