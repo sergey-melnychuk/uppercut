@@ -160,10 +160,11 @@ impl<'a> Runtime<'a> {
 
         if remote.enabled {
             let server = Server::listen(&remote.listening)?;
+            let port = server.port();
             run.spawn("server", move || Box::new(server));
             run.send("server", Envelope::of(StartServer));
 
-            let client = Client::new();
+            let client = Client::new(port);
             run.spawn("client", move || Box::new(client));
             run.send("client", Envelope::of(StartClient));
         }

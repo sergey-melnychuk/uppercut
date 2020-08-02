@@ -9,6 +9,8 @@ use mio::net::TcpStream;
 use parser_combinators::stream::ByteStream;
 use std::collections::HashMap;
 
+use bytes::{BytesMut, BufMut, Bytes};
+
 use crate::api::{AnyActor, AnySender, Envelope};
 
 // TODO make poll timeout, buffer sizes, pooling, etc configurable by introducing ClientConfig
@@ -19,10 +21,11 @@ pub struct Client {
     counter: usize,
     connections: HashMap<usize, Connection>,
     destinations: HashMap<String, usize>,
+    response_port: u16,
 }
 
 impl Client {
-    pub fn new() -> Self {
+    pub fn new(response_port: u16) -> Self {
         let poll = Poll::new().unwrap();
         let events = Events::with_capacity(1024);
 
@@ -32,6 +35,7 @@ impl Client {
             counter: 0,
             connections: HashMap::new(),
             destinations: HashMap::new(),
+            response_port,
         }
     }
 
@@ -163,13 +167,50 @@ struct Loop;
 
 impl AnyActor for Client {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
+        println!("client: received an envelope");
         if let Some(_) = envelope.message.downcast_ref::<Loop>() {
             self.poll(None);
-        } else if let Some(_envelope) = envelope.message.downcast_ref::<Envelope>() {
-            //
+            let me = sender.myself();
+            sender.send(&me, Envelope::of(Loop));
+        } else if let Some(vec) = envelope.message.downcast_ref::<Vec<u8>>() {
+            println!("client: received an envelope: of Vec<u8>");
+            let (to, host) = split_address(envelope.to);
+            let from = envelope.from.to_owned();
+            let ok = self.has(&host) || self.connect(&host).is_ok();
+
+            if ok {
+                let cap: usize = 3 * 4 + vec.len() + to.len() + from.len();
+                let mut buf = BytesMut::with_capacity(cap);
+                buf.put_u32(to.len() as u32);
+                buf.put_u32(from.len() as u32);
+                buf.put_u32(vec.len() as u32);
+                buf.put(to.as_bytes());
+                buf.put(from.as_bytes());
+                buf.put(vec.as_ref());
+
+                println!("client/sent (at :{}): to={}[@{}] from={} vec={:?}/{}",
+                         self.response_port, to, host, from, vec,
+                         String::from_utf8(vec.clone()).unwrap());
+
+                let n = self.put(&host, buf.as_ref());
+                println!("client: bytes sent: {}", n);
+            }
+
         } else if let Some(_) = envelope.message.downcast_ref::<StartClient>() {
             let me = sender.myself();
             sender.send(&me, Envelope::of(Loop));
         }
+    }
+}
+
+fn split_address(address: String) -> (String, String) {
+    if address.contains('@') {
+        let split = address.split("@")
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        (split[0].to_owned(), split[1].to_owned())
+    } else {
+        (address, String::default())
     }
 }
