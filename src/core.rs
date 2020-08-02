@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::any::Any;
 use std::collections::{HashMap, BinaryHeap, HashSet};
 use std::sync::{Mutex, Arc};
@@ -11,6 +12,8 @@ use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::metrics::{SchedulerMetrics};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
+use crate::remote::server::{Server, Start};
+use crate::remote::client::Client;
 
 impl AnySender for Memory<Envelope> {
     fn me(&self) -> &str {
@@ -145,21 +148,27 @@ impl<'a> Runtime<'a> {
         }
     }
 
-    fn start(&self) -> Run<'a> {
+    fn start(self) -> Result<Run<'a>, Box<dyn Error>> {
+        let (pool, config) = (self.pool, self.config);
+        let (scheduler, remote) = (config.scheduler, config.remote);
         let events = unbounded();
         let actions = unbounded();
-
         let sender = actions.0.clone();
-        start_actor_runtime(self.pool, self.config.clone(), events, actions);
-        let run = Run { sender, pool: self.pool };
 
-        let remote = &self.config.remote;
+        start_actor_runtime(pool, scheduler, events, actions);
+        let run = Run { sender, pool };
 
         if remote.enabled {
-            // TODO start remote actors
+
+            let listener = Server::listen("0.0.0.0:9000")?;
+            run.spawn("server", move || Box::new(listener));
+            run.send("server", Envelope::of(Start, ""));
+
+            // TODO start client actor here
+
         }
 
-        run
+        Ok(run)
     }
 }
 
@@ -175,12 +184,13 @@ impl System {
         }
     }
 
-    pub fn run(self, pool: &ThreadPool) -> Result<Run, &'static str> {
+    pub fn run(self, pool: &ThreadPool) -> Result<Run, Box<dyn Error>> {
         if pool.size() < self.config.scheduler.total_threads_required() {
-            Result::Err("Not enough threads in the pool")
+            let e: Box<dyn Error> = "Not enough threads in the pool".to_string().into();
+            Err(e)
         } else {
             let runtime = Runtime::new(pool, self.config);
-            Ok(runtime.start())
+            Ok(runtime.start()?)
         }
     }
 }
@@ -351,14 +361,14 @@ fn event_loop(actions_rx: Receiver<Action>,
 }
 
 fn start_actor_runtime(pool: &ThreadPool,
-                       config: Config,
+                       scheduler_config: SchedulerConfig,
                        events: (Sender<Event>, Receiver<Event>),
                        actions: (Sender<Action>, Receiver<Action>)) {
     let (actions_tx, actions_rx) = actions;
     let (events_tx, events_rx) = events;
     let events_rx = Arc::new(Mutex::new(events_rx));
 
-    let scheduler = Scheduler::with_config(&config.scheduler);
+    let scheduler = Scheduler::with_config(&scheduler_config);
 
     let thread_count = scheduler.config.actor_worker_threads;
     for _ in 0..thread_count {
