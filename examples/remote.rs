@@ -10,14 +10,14 @@ struct PingPong {
 
 impl AnyActor for PingPong {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
-        if let Some(s) = envelope.message.downcast_ref::<String>() {
+        if let Some(s) = envelope.message.downcast_ref::<&[u8]>() {
             self.count += 1;
 
-            println!("{}: {}", sender.me(), s);
-            if s == "ping" {
+            println!("{}: {:?}", sender.me(), s);
+            if s == b"ping\n" {
                 let r = Envelope::of("pong".to_string(), sender.me());
                 sender.send(&envelope.from, r);
-            } else if s == "pong" {
+            } else if s == b"pong\n" {
                 let r = Envelope::of("ping".to_string(), sender.me());
                 sender.send(&envelope.from, r);
             }
