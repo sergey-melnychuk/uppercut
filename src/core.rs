@@ -79,9 +79,9 @@ struct Scheduler {
 }
 
 impl Scheduler {
-    fn with_config(config: SchedulerConfig) -> Scheduler {
+    fn with_config(config: &SchedulerConfig) -> Scheduler {
         Scheduler {
-            config,
+            config: config.clone(),
             actors: HashMap::default(),
             queue: HashMap::default(),
             tasks: BinaryHeap::default(),
@@ -134,11 +134,11 @@ impl PartialOrd for Entry {
 
 struct Runtime<'a> {
     pool: &'a ThreadPool,
-    config: SchedulerConfig,
+    config: Config,
 }
 
 impl<'a> Runtime<'a> {
-    fn new(pool: &'a ThreadPool, config: SchedulerConfig) -> Runtime {
+    fn new(pool: &'a ThreadPool, config: Config) -> Runtime {
         Runtime {
             pool,
             config,
@@ -146,13 +146,20 @@ impl<'a> Runtime<'a> {
     }
 
     fn start(&self) -> Run<'a> {
-        let scheduler = Scheduler::with_config(self.config.clone());
         let events = unbounded();
         let actions = unbounded();
 
         let sender = actions.0.clone();
-        start_actor_runtime(self.pool, scheduler, events, actions);
-        Run { sender, pool: self.pool }
+        start_actor_runtime(self.pool, self.config.clone(), events, actions);
+        let run = Run { sender, pool: self.pool };
+
+        let remote = &self.config.remote;
+
+        if remote.enabled {
+            // TODO start remote actors
+        }
+
+        run
     }
 }
 
@@ -172,7 +179,7 @@ impl System {
         if pool.size() < self.config.scheduler.total_threads_required() {
             Result::Err("Not enough threads in the pool")
         } else {
-            let runtime = Runtime::new(pool, self.config.scheduler);
+            let runtime = Runtime::new(pool, self.config);
             Ok(runtime.start())
         }
     }
@@ -313,7 +320,7 @@ fn event_loop(actions_rx: Receiver<Action>,
                     scheduler.actors.remove(&tag);
                     scheduler.queue.remove(&tag);
                 },
-                Action::Shutdown => break
+                Action::Shutdown => break,
             }
         } else {
             metrics.miss +=1 ;
@@ -344,12 +351,14 @@ fn event_loop(actions_rx: Receiver<Action>,
 }
 
 fn start_actor_runtime(pool: &ThreadPool,
-                       scheduler: Scheduler,
+                       config: Config,
                        events: (Sender<Event>, Receiver<Event>),
                        actions: (Sender<Action>, Receiver<Action>)) {
     let (actions_tx, actions_rx) = actions;
     let (events_tx, events_rx) = events;
     let events_rx = Arc::new(Mutex::new(events_rx));
+
+    let scheduler = Scheduler::with_config(&config.scheduler);
 
     let thread_count = scheduler.config.actor_worker_threads;
     for _ in 0..thread_count {
