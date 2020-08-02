@@ -43,6 +43,7 @@ impl RemoteConfig {
 pub struct SchedulerConfig {
     // Maximum number of envelopes an actor can process at single scheduled execution
     pub actor_throughput: usize,
+    pub metric_reporting_enabled: bool,
     pub metric_reporting_interval: Duration,
     pub delay_precision: Duration,
     pub actor_worker_threads: usize,
@@ -53,6 +54,7 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         SchedulerConfig {
             actor_throughput: 1,
+            metric_reporting_enabled: false,
             metric_reporting_interval: Duration::from_secs(1),
             delay_precision: Duration::from_millis(1),
             actor_worker_threads: 4,

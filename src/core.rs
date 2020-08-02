@@ -160,7 +160,7 @@ impl<'a> Runtime<'a> {
 
         if remote.enabled {
 
-            let listener = Server::listen("0.0.0.0:9000")?;
+            let listener = Server::listen(&remote.listening)?;
             run.spawn("server", move || Box::new(listener));
             run.send("server", Envelope::of(Start, ""));
 
@@ -352,7 +352,9 @@ fn event_loop(actions_rx: Receiver<Action>,
             metrics.actors = scheduler.active.len() as u64;
 
             // Feature required: configurable metric reporting
-            pool_link(Box::new(move || println!("{:?}", metrics.clone())));
+            if scheduler.config.metric_reporting_enabled {
+                pool_link(Box::new(move || println!("{:?}", metrics.clone())));
+            }
 
             metrics = SchedulerMetrics::default();
             start = Instant::now();
