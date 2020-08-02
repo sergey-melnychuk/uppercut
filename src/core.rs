@@ -159,16 +159,13 @@ impl<'a> Runtime<'a> {
         let run = Run { sender, pool };
 
         if remote.enabled {
-
             let server = Server::listen(&remote.listening)?;
             run.spawn("server", move || Box::new(server));
             run.send("server", Envelope::of(StartServer));
 
-            // TODO start client actor here
             let client = Client::new();
             run.spawn("client", move || Box::new(client));
             run.send("client", Envelope::of(StartClient));
-
         }
 
         Ok(run)
