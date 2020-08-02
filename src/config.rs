@@ -17,15 +17,24 @@ impl Config {
 
 #[derive(Clone)]
 pub struct RemoteConfig {
-    pub host: String,
-    pub port: u16,
+    pub enabled: bool,
+    pub listening: String,
 }
 
 impl Default for RemoteConfig {
     fn default() -> Self {
         Self {
-            host: "127.0.0.1".to_string(),
-            port: 4242,
+            enabled: false,
+            listening: "127.0.0.1:4242".to_string(),
+        }
+    }
+}
+
+impl RemoteConfig {
+    pub fn listening_at(listening: &str) -> Self {
+        Self {
+            enabled: true,
+            listening: listening.to_string(),
         }
     }
 }
