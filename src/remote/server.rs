@@ -27,6 +27,8 @@ pub struct Server {
     port: u16,
 }
 
+// TODO make buffer sizes configurable, introduce ServerConfig under RemoteConfig
+
 impl Server {
     pub fn listen(addr: &str) -> Result<Server, Box<dyn Error>> {
         let poll = Poll::new().unwrap();
