@@ -50,10 +50,8 @@ fn main() {
 
     // send initial ping
 
-    let env1 = Envelope::of(b"pong".to_vec())
-        .to("pong@127.0.0.1:10002")
-        .from("ping");
-    run1.delay("client", env1, Duration::from_secs(1));
+    let env1 = Envelope::of(b"pong".to_vec()).from("ping");
+    run1.send("pong@127.0.0.1:10002", env1);
 
     std::thread::park();  // block current thread
 }
