@@ -24,18 +24,19 @@ impl AnySender for Memory<Envelope> {
         self.own.clone()
     }
 
-    fn send(&mut self, address: &str, message: Envelope) {
-        // TODO check if address contains '@' - forward to 'client' if does
-        self.map.entry(address.to_string()).or_default().push(message);
+    fn send(&mut self, address: &str, mut envelope: Envelope) {
+        let tag = adjust_remote_address(address, &mut envelope);
+        self.map.entry(tag.to_string()).or_default().push(envelope);
     }
 
     fn spawn(&mut self, address: &str, f: fn() -> Actor) {
         self.new.insert(address.to_string(), f());
     }
 
-    fn delay(&mut self, address: &str, envelope: Envelope, duration: Duration) {
+    fn delay(&mut self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
-        let entry = Entry { at, tag: address.to_string(), envelope };
+        let tag = adjust_remote_address(address, &mut envelope);
+        let entry = Entry { at, tag: tag.to_string(), envelope };
         self.delay.push(entry);
     }
 
@@ -207,9 +208,9 @@ pub struct Run<'a> {
 }
 
 impl<'a> Run<'a> {
-    pub fn send(&self, address: &str, message: Envelope) {
-        // TODO check if address contains '@' - forward to 'client' if does
-        let action = Action::Queue { tag: address.to_string(), queue: vec![message] };
+    pub fn send(&self, address: &str, mut envelope: Envelope) {
+        let tag = adjust_remote_address(address, &mut envelope);
+        let action = Action::Queue { tag: tag.to_string(), queue: vec![envelope] };
         self.sender.send(action).unwrap();
     }
 
@@ -223,9 +224,10 @@ impl<'a> Run<'a> {
         self.sender.send(action).unwrap();
     }
 
-    pub fn delay(&self, address: &str, envelope: Envelope, duration: Duration) {
+    pub fn delay(&self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
-        let entry = Entry { at, tag: address.to_string(), envelope };
+        let tag = adjust_remote_address(address, &mut envelope);
+        let entry = Entry { at, tag: tag.to_string(), envelope };
         let action = Action::Delay { entry };
         self.sender.send(action).unwrap();
     }
@@ -401,4 +403,13 @@ fn start_actor_runtime(name: String,
             events_tx.send(Event::Stop).unwrap();
         }
     });
+}
+
+fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'a str {
+    if address.contains('@') {
+        envelope.to = address.to_string();
+        "client"
+    } else {
+        address
+    }
 }
