@@ -189,8 +189,8 @@ impl AnyActor for Connection {
                     host.set_port(response_port);
                     let from = format!("{}@{}", from, host);
 
-                    println!("server/rcvd (at :{}): to={} from={} vec={:?}/{}",
-                             host.port(), to, from, vec, String::from_utf8(vec.clone()).unwrap());
+                    println!("server/rcvd: to={} from={} vec={:?}/{}",
+                             to, from, vec, String::from_utf8(vec.clone()).unwrap());
                     let e = Envelope::of(vec).to(&to).from(&from);
                     sender.send(&to, e);
                 }

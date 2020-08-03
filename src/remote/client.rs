@@ -190,9 +190,8 @@ impl AnyActor for Client {
                 buf.put(from.as_bytes());
                 buf.put(vec.as_ref());
 
-                println!("client/sent (at :{}): to={}[@{}] from={} vec={:?}/{}",
-                         self.response_port, to, host, from, vec,
-                         String::from_utf8(vec.clone()).unwrap());
+                println!("client/sent: to={}[@{}] from={} vec={:?}/{}",
+                         to, host, from, vec, String::from_utf8(vec.clone()).unwrap());
 
                 self.put(&host, buf.as_ref());
             }
