@@ -1,7 +1,8 @@
 use std::fmt;
 
-#[derive(Default, Copy, Clone)]
+#[derive(Clone)]
 pub struct SchedulerMetrics {
+    pub name: String,
     pub at: u64,
     pub millis: u64,
     pub ticks: u64,
@@ -16,9 +17,45 @@ pub struct SchedulerMetrics {
     pub actors: u64,
 }
 
+impl SchedulerMetrics {
+    pub fn named(name: String) -> Self {
+        Self {
+            name,
+            at: 0,
+            millis: 0,
+            ticks: 0,
+            miss: 0,
+            hit: 0,
+            messages: 0,
+            queues: 0,
+            returns: 0,
+            spawns: 0,
+            delays: 0,
+            stops: 0,
+            actors: 0,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.at = 0;
+        self.millis = 0;
+        self.ticks = 0;
+        self.miss = 0;
+        self.hit = 0;
+        self.messages = 0;
+        self.queues = 0;
+        self.returns = 0;
+        self.spawns = 0;
+        self.delays = 0;
+        self.stops = 0;
+        self.actors = 0;
+    }
+}
+
 impl fmt::Debug for SchedulerMetrics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SchedulerMetrics")
+            .field("name", &self.name)
             .field("at", &self.at)
             .field("millis", &self.millis)
             .field("ticks", &self.ticks)
