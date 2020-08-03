@@ -1,6 +1,6 @@
 [package]
 name = "uppercut"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["sergey-melnychuk"]
 edition = "2018"
 description = "Small and simple actor model implementation"
@@ -10,7 +10,6 @@ homepage = "https://github.com/sergey-melnychuk/uppercut"
 repository = "https://github.com/sergey-melnychuk/uppercut"
 
 [dependencies]
-num_cpus = "1.13.0"
 core_affinity = "0.5.10"
 crossbeam-channel = "0.4.2"
 parser-combinators = { git = "https://github.com/sergey-melnychuk/rust-parser-combinators", tag = "0.1.4" }
@@ -22,6 +21,7 @@ features = ["os-poll", "tcp"]
 
 [dev-dependencies]
 bencher = "0.1.5"
+num_cpus = "1.13.0"
 
 [[bench]]
 name = "workload"
