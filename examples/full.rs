@@ -175,9 +175,9 @@ fn main() {
     let cores = num_cpus::get();
     let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 worker thread
 
-    let cfg = Config::new(
-        SchedulerConfig::with_total_threads(cores),
-        RemoteConfig::default());
+    let mut scheduler_config = SchedulerConfig::with_total_threads(cores);
+    scheduler_config.metric_reporting_enabled = true;
+    let cfg = Config::new(scheduler_config, RemoteConfig::default());
     let sys = System::new("full", &cfg);
     let run = sys.run(&pool).unwrap();
 
