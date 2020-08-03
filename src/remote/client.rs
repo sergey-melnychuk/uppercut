@@ -6,7 +6,7 @@ use std::time::Duration;
 use mio::{Poll, Events, Token, Interest};
 use mio::net::TcpStream;
 
-use parser_combinators::stream::ByteStream;
+use parsed::stream::ByteStream;
 use std::collections::HashMap;
 
 use bytes::{BytesMut, BufMut};

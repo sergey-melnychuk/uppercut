@@ -130,9 +130,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "parser-combinators"
-version = "0.1.0"
-source = "git+https://github.com/sergey-melnychuk/rust-parser-combinators?tag=0.1.4#81565133cf7e26e25c42ece4babbfdbeb80a3d58"
+name = "parsed"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "redox_syscall"
@@ -160,7 +160,7 @@ dependencies = [
  "crossbeam-channel 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "mio 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "parser-combinators 0.1.0 (git+https://github.com/sergey-melnychuk/rust-parser-combinators?tag=0.1.4)",
+ "parsed 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -210,7 +210,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum miow 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)" = "07b88fb9795d4d36d62a012dfbf49a8f5cf12751f36d31a9dbe66d528e58979e"
 "checksum ntapi 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)" = "7a31937dea023539c72ddae0e3571deadc1414b300483fa7aaec176168cfa9d2"
 "checksum num_cpus 1.13.0 (registry+https://github.com/rust-lang/crates.io-index)" = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
-"checksum parser-combinators 0.1.0 (git+https://github.com/sergey-melnychuk/rust-parser-combinators?tag=0.1.4)" = "<none>"
+"checksum parsed 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "ccc4275bc6403e5e69fe12f3ba9e8670bc0945067c3b3f1acf16388e8457c746"
 "checksum redox_syscall 0.1.57 (registry+https://github.com/rust-lang/crates.io-index)" = "41cc0f7e4d5d4544e8861606a285bb08d3e70712ccc7d2b84d7c0ccfaf4b05ce"
 "checksum socket2 0.3.12 (registry+https://github.com/rust-lang/crates.io-index)" = "03088793f677dce356f3ccc2edb1b314ad191ab702a5de3faf49304f7e104918"
 "checksum winapi 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)" = "167dc9d6949a9b857f3451275e911c3f44255842c1f7a76f33c55103a909087a"

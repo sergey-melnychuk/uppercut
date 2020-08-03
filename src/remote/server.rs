@@ -5,7 +5,7 @@ use std::time::Duration;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Token};
 
-use parser_combinators::stream::ByteStream;
+use parsed::stream::ByteStream;
 
 use crate::api::{AnyActor, AnySender, Envelope};
 use bytes::{Bytes, Buf};
