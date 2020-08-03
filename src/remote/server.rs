@@ -9,7 +9,6 @@ use parser_combinators::stream::ByteStream;
 
 use crate::api::{AnyActor, AnySender, Envelope};
 use bytes::{Bytes, Buf};
-use bytes::buf::BufExt;
 use std::net::SocketAddr;
 
 pub struct StartServer;
@@ -159,34 +158,33 @@ impl AnyActor for Connection {
                 return;
             }
 
-            if self.recv_buf.len() > 12 { // 12 = u32 * 4
-                //println!("inside 'self.recv_buf.len() > 12'");
-                // TODO ready to read
+            if self.recv_buf.len() > 14 { // 12 = u32 * 4 + 2
+                // TODO extract reading from buffer
 
                 let copy = self.recv_buf.as_ref().to_vec();
                 let len = copy.len();
-                //println!("len = {}", len);
                 let mut buf = Bytes::from(copy);
 
-                let (to_len, from_len, vec_len) =
-                    (buf.get_u32() as usize, buf.get_u32() as usize, buf.get_u32() as usize);
-                //println!("to={} from={} vec={}", to_len, from_len, vec_len);
+                let (to_len, from_len, vec_len, response_port) = (
+                    buf.get_u32() as usize,
+                    buf.get_u32() as usize,
+                    buf.get_u32() as usize,
+                    buf.get_u16()
+                );
 
-                if len >= 3 * 4 + to_len + from_len + vec_len {
+                if len >= 3 * 4 + 2 + to_len + from_len + vec_len {
                     //println!("inside 'len >= 3 * 4 + to_len + from_len + vec_len'");
-                    let _ = self.recv_buf.get(12);
+                    let _ = self.recv_buf.get(14);
 
-                    // TODO error handling?
+                    // TODO address error handling
                     let to = String::from_utf8(self.recv_buf.get(to_len).unwrap()).unwrap();
                     let from = String::from_utf8(self.recv_buf.get(from_len).unwrap()).unwrap();
                     let vec = self.recv_buf.get(vec_len).unwrap();
 
                     self.recv_buf.pull();
 
-                    // TODO FIXME: client must send the port of respective listening server!
-                    // Known port is where THIS system is listening, not where reply can be sent to THAT system.
                     let mut host = self.socket.as_ref().unwrap().peer_addr().unwrap();
-                    host.set_port(self.socket.as_ref().unwrap().local_addr().unwrap().port());
+                    host.set_port(response_port);
                     let from = format!("{}@{}", from, host);
 
                     println!("server/rcvd (at :{}): to={} from={} vec={:?}/{}",
