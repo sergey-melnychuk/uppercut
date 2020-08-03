@@ -25,6 +25,7 @@ impl AnySender for Memory<Envelope> {
     }
 
     fn send(&mut self, address: &str, message: Envelope) {
+        // TODO check if address contains '@' - forward to 'client' if does
         self.map.entry(address.to_string()).or_default().push(message);
     }
 
@@ -136,13 +137,15 @@ impl PartialOrd for Entry {
 }
 
 struct Runtime<'a> {
+    name: String,
     pool: &'a ThreadPool,
     config: Config,
 }
 
 impl<'a> Runtime<'a> {
-    fn new(pool: &'a ThreadPool, config: Config) -> Runtime {
+    fn new(name: String, pool: &'a ThreadPool, config: Config) -> Runtime {
         Runtime {
+            name,
             pool,
             config,
         }
@@ -155,7 +158,7 @@ impl<'a> Runtime<'a> {
         let actions = unbounded();
         let sender = actions.0.clone();
 
-        start_actor_runtime(pool, scheduler, events, actions);
+        start_actor_runtime(self.name, pool, scheduler, events, actions);
         let run = Run { sender, pool };
 
         if remote.enabled {
@@ -175,12 +178,14 @@ impl<'a> Runtime<'a> {
 
 #[derive(Default)]
 pub struct System {
+    name: String,
     config: Config,
 }
 
 impl System {
-    pub fn new(config: &Config) -> System {
+    pub fn new(name: &str, config: &Config) -> System {
         System {
+            name: name.to_string(),
             config: config.clone()
         }
     }
@@ -190,7 +195,7 @@ impl System {
             let e: Box<dyn Error> = "Not enough threads in the pool".to_string().into();
             Err(e)
         } else {
-            let runtime = Runtime::new(pool, self.config);
+            let runtime = Runtime::new(self.name, pool, self.config);
             Ok(runtime.start()?)
         }
     }
@@ -203,6 +208,7 @@ pub struct Run<'a> {
 
 impl<'a> Run<'a> {
     pub fn send(&self, address: &str, message: Envelope) {
+        // TODO check if address contains '@' - forward to 'client' if does
         let action = Action::Queue { tag: address.to_string(), queue: vec![message] };
         self.sender.send(action).unwrap();
     }
@@ -267,9 +273,10 @@ fn event_loop(actions_rx: Receiver<Action>,
               actions_tx: Sender<Action>,
               events_tx: Sender<Event>,
               mut scheduler: Scheduler,
-              pool_link: impl Fn(Runnable)) {
+              pool_link: impl Fn(Runnable),
+              name: String) {
     let throughput = scheduler.config.actor_throughput;
-    let mut metrics = SchedulerMetrics::default();
+    let mut metrics = SchedulerMetrics::named(name);
     let mut start = Instant::now();
     loop {
         let received = actions_rx.try_recv();
@@ -334,7 +341,9 @@ fn event_loop(actions_rx: Receiver<Action>,
                 Action::Shutdown => break,
             }
         } else {
-            metrics.miss +=1 ;
+            metrics.miss +=1;
+            // TODO avoid busy-loop when there are "too much" misses
+            // Consider throttling: actionx_rx.recv_timeout(<variable timeout>)
         }
 
         let now = Instant::now().add(scheduler.config.delay_precision);
@@ -354,16 +363,18 @@ fn event_loop(actions_rx: Receiver<Action>,
 
             // Feature required: configurable metric reporting
             if scheduler.config.metric_reporting_enabled {
-                pool_link(Box::new(move || println!("{:?}", metrics.clone())));
+                let m = metrics.clone();
+                pool_link(Box::new(move || println!("{:?}", m)));
             }
 
-            metrics = SchedulerMetrics::default();
+            metrics.reset();
             start = Instant::now();
         }
     }
 }
 
-fn start_actor_runtime(pool: &ThreadPool,
+fn start_actor_runtime(name: String,
+                       pool: &ThreadPool,
                        scheduler_config: SchedulerConfig,
                        events: (Sender<Event>, Receiver<Event>),
                        actions: (Sender<Action>, Receiver<Action>)) {
@@ -385,7 +396,7 @@ fn start_actor_runtime(pool: &ThreadPool,
 
     let pool_link = pool.link();
     pool.submit(move || {
-        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, pool_link);
+        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, pool_link, name);
         for _ in 0..thread_count {
             events_tx.send(Event::Stop).unwrap();
         }
