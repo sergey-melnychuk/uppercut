@@ -10,6 +10,9 @@ mod config;
 #[path = "../src/metrics.rs"]
 mod metrics;
 
+#[path = "../src/remote/mod.rs"]
+mod remote;
+
 #[path = "../src/core.rs"]
 mod core;
 
@@ -61,7 +64,7 @@ impl AnyActor for Counter {
                     self.1.send(self.0).unwrap();
                 },
                 CounterProtocol::Get => {
-                    let env = Envelope::of(CounterProtocol::Inc, "");
+                    let env = Envelope::of(CounterProtocol::Inc);
                     sender.send(&sender.myself(), env);
                 }
             }
@@ -72,7 +75,7 @@ impl AnyActor for Counter {
 fn with_run<T: Eq + Debug, E, F: FnOnce(&Run) -> Result<T, E>>(expected: T, f: F) -> Result<(), E> {
     let cfg = Config::default();
     let pool: ThreadPool = ThreadPool::for_config(&cfg);
-    let sys = System::new(&cfg);
+    let sys = System::new("test", &cfg);
     let run = sys.run(&pool).unwrap();
     let got = f(&run);
     run.shutdown();
@@ -89,7 +92,7 @@ fn sent_message_received() -> Result<(), RecvTimeoutError> {
         run.spawn("test", || Box::new(Test(ANSWER)));
 
         let (tx, rx) = channel();
-        let env = Envelope::of(Init(tx), "");
+        let env = Envelope::of(Init(tx));
         run.send("test", env);
 
         rx.recv_timeout(TIMEOUT)
@@ -103,7 +106,7 @@ fn forwarded_message_received() -> Result<(), RecvTimeoutError> {
         run.spawn("proxy", || Box::new(Proxy { target: "test".to_string() }));
 
         let (tx, rx) = channel();
-        let env = Envelope::of(Init(tx), "");
+        let env = Envelope::of(Init(tx));
         run.send("proxy", env);
 
         rx.recv_timeout(TIMEOUT)
@@ -116,7 +119,7 @@ fn delayed_message_received() -> Result<(), RecvTimeoutError> {
         run.spawn("test", || Box::new(Test(ANSWER)));
 
         let (tx, rx) = channel();
-        let env = Envelope::of(Init(tx), "");
+        let env = Envelope::of(Init(tx));
 
         const DELAY: Duration = Duration::from_millis(100);
         run.delay("test", env, DELAY);
@@ -131,7 +134,7 @@ fn own_message_received() -> Result<(), RecvTimeoutError> {
         let (tx, rx) = channel();
         run.spawn("test", || Box::new(Counter(ANSWER, tx)));
 
-        let env = Envelope::of(CounterProtocol::Get, "");
+        let env = Envelope::of(CounterProtocol::Get);
         run.send("test", env);
 
         rx.recv_timeout(TIMEOUT)
@@ -157,7 +160,7 @@ fn message_order_perceived() -> Result<(), RecvTimeoutError> {
         run.spawn("test", || Box::new(Replier(tx)));
 
         for x in 1..=n {
-            let e = Envelope::of(x, "");
+            let e = Envelope::of(x);
             run.send("test", e);
         }
 

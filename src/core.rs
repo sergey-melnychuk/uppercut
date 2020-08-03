@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::any::Any;
 use std::collections::{HashMap, BinaryHeap, HashSet};
 use std::sync::{Mutex, Arc};
@@ -11,6 +12,8 @@ use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::metrics::{SchedulerMetrics};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
+use crate::remote::server::{Server, StartServer};
+use crate::remote::client::{Client, StartClient};
 
 impl AnySender for Memory<Envelope> {
     fn me(&self) -> &str {
@@ -21,17 +24,19 @@ impl AnySender for Memory<Envelope> {
         self.own.clone()
     }
 
-    fn send(&mut self, address: &str, message: Envelope) {
-        self.map.entry(address.to_string()).or_default().push(message);
+    fn send(&mut self, address: &str, mut envelope: Envelope) {
+        let tag = adjust_remote_address(address, &mut envelope);
+        self.map.entry(tag.to_string()).or_default().push(envelope);
     }
 
     fn spawn(&mut self, address: &str, f: fn() -> Actor) {
         self.new.insert(address.to_string(), f());
     }
 
-    fn delay(&mut self, address: &str, envelope: Envelope, duration: Duration) {
+    fn delay(&mut self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
-        let entry = Entry { at, tag: address.to_string(), envelope };
+        let tag = adjust_remote_address(address, &mut envelope);
+        let entry = Entry { at, tag: tag.to_string(), envelope };
         self.delay.push(entry);
     }
 
@@ -79,9 +84,9 @@ struct Scheduler {
 }
 
 impl Scheduler {
-    fn with_config(config: SchedulerConfig) -> Scheduler {
+    fn with_config(config: &SchedulerConfig) -> Scheduler {
         Scheduler {
-            config,
+            config: config.clone(),
             actors: HashMap::default(),
             queue: HashMap::default(),
             tasks: BinaryHeap::default(),
@@ -133,47 +138,66 @@ impl PartialOrd for Entry {
 }
 
 struct Runtime<'a> {
+    name: String,
     pool: &'a ThreadPool,
-    config: SchedulerConfig,
+    config: Config,
 }
 
 impl<'a> Runtime<'a> {
-    fn new(pool: &'a ThreadPool, config: SchedulerConfig) -> Runtime {
+    fn new(name: String, pool: &'a ThreadPool, config: Config) -> Runtime {
         Runtime {
+            name,
             pool,
             config,
         }
     }
 
-    fn start(&self) -> Run<'a> {
-        let scheduler = Scheduler::with_config(self.config.clone());
+    fn start(self) -> Result<Run<'a>, Box<dyn Error>> {
+        let (pool, config) = (self.pool, self.config);
+        let (scheduler, remote) = (config.scheduler, config.remote);
         let events = unbounded();
         let actions = unbounded();
-
         let sender = actions.0.clone();
-        start_actor_runtime(self.pool, scheduler, events, actions);
-        Run { sender, pool: self.pool }
+
+        start_actor_runtime(self.name, pool, scheduler, events, actions);
+        let run = Run { sender, pool };
+
+        if remote.enabled {
+            let server = Server::listen(&remote.listening)?;
+            let port = server.port();
+            run.spawn("server", move || Box::new(server));
+            run.send("server", Envelope::of(StartServer));
+
+            let client = Client::new(port);
+            run.spawn("client", move || Box::new(client));
+            run.send("client", Envelope::of(StartClient));
+        }
+
+        Ok(run)
     }
 }
 
 #[derive(Default)]
 pub struct System {
+    name: String,
     config: Config,
 }
 
 impl System {
-    pub fn new(config: &Config) -> System {
+    pub fn new(name: &str, config: &Config) -> System {
         System {
+            name: name.to_string(),
             config: config.clone()
         }
     }
 
-    pub fn run(self, pool: &ThreadPool) -> Result<Run, &'static str> {
+    pub fn run(self, pool: &ThreadPool) -> Result<Run, Box<dyn Error>> {
         if pool.size() < self.config.scheduler.total_threads_required() {
-            Result::Err("Not enough threads in the pool")
+            let e: Box<dyn Error> = "Not enough threads in the pool".to_string().into();
+            Err(e)
         } else {
-            let runtime = Runtime::new(pool, self.config.scheduler);
-            Ok(runtime.start())
+            let runtime = Runtime::new(self.name, pool, self.config);
+            Ok(runtime.start()?)
         }
     }
 }
@@ -184,8 +208,9 @@ pub struct Run<'a> {
 }
 
 impl<'a> Run<'a> {
-    pub fn send(&self, address: &str, message: Envelope) {
-        let action = Action::Queue { tag: address.to_string(), queue: vec![message] };
+    pub fn send(&self, address: &str, mut envelope: Envelope) {
+        let tag = adjust_remote_address(address, &mut envelope);
+        let action = Action::Queue { tag: tag.to_string(), queue: vec![envelope] };
         self.sender.send(action).unwrap();
     }
 
@@ -199,9 +224,10 @@ impl<'a> Run<'a> {
         self.sender.send(action).unwrap();
     }
 
-    pub fn delay(&self, address: &str, envelope: Envelope, duration: Duration) {
+    pub fn delay(&self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
-        let entry = Entry { at, tag: address.to_string(), envelope };
+        let tag = adjust_remote_address(address, &mut envelope);
+        let entry = Entry { at, tag: tag.to_string(), envelope };
         let action = Action::Delay { entry };
         self.sender.send(action).unwrap();
     }
@@ -249,9 +275,10 @@ fn event_loop(actions_rx: Receiver<Action>,
               actions_tx: Sender<Action>,
               events_tx: Sender<Event>,
               mut scheduler: Scheduler,
-              pool_link: impl Fn(Runnable)) {
+              pool_link: impl Fn(Runnable),
+              name: String) {
     let throughput = scheduler.config.actor_throughput;
-    let mut metrics = SchedulerMetrics::default();
+    let mut metrics = SchedulerMetrics::named(name);
     let mut start = Instant::now();
     loop {
         let received = actions_rx.try_recv();
@@ -313,10 +340,12 @@ fn event_loop(actions_rx: Receiver<Action>,
                     scheduler.actors.remove(&tag);
                     scheduler.queue.remove(&tag);
                 },
-                Action::Shutdown => break
+                Action::Shutdown => break,
             }
         } else {
-            metrics.miss +=1 ;
+            metrics.miss +=1;
+            // TODO avoid busy-loop when there are "too much" misses
+            // Consider throttling: actionx_rx.recv_timeout(<variable timeout>)
         }
 
         let now = Instant::now().add(scheduler.config.delay_precision);
@@ -335,21 +364,27 @@ fn event_loop(actions_rx: Receiver<Action>,
             metrics.actors = scheduler.active.len() as u64;
 
             // Feature required: configurable metric reporting
-            pool_link(Box::new(move || println!("{:?}", metrics.clone())));
+            if scheduler.config.metric_reporting_enabled {
+                let m = metrics.clone();
+                pool_link(Box::new(move || println!("{:?}", m)));
+            }
 
-            metrics = SchedulerMetrics::default();
+            metrics.reset();
             start = Instant::now();
         }
     }
 }
 
-fn start_actor_runtime(pool: &ThreadPool,
-                       scheduler: Scheduler,
+fn start_actor_runtime(name: String,
+                       pool: &ThreadPool,
+                       scheduler_config: SchedulerConfig,
                        events: (Sender<Event>, Receiver<Event>),
                        actions: (Sender<Action>, Receiver<Action>)) {
     let (actions_tx, actions_rx) = actions;
     let (events_tx, events_rx) = events;
     let events_rx = Arc::new(Mutex::new(events_rx));
+
+    let scheduler = Scheduler::with_config(&scheduler_config);
 
     let thread_count = scheduler.config.actor_worker_threads;
     for _ in 0..thread_count {
@@ -363,9 +398,18 @@ fn start_actor_runtime(pool: &ThreadPool,
 
     let pool_link = pool.link();
     pool.submit(move || {
-        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, pool_link);
+        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, pool_link, name);
         for _ in 0..thread_count {
             events_tx.send(Event::Stop).unwrap();
         }
     });
+}
+
+fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'a str {
+    if address.contains('@') {
+        envelope.to = address.to_string();
+        "client"
+    } else {
+        address
+    }
 }

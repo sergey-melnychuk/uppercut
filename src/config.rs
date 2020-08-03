@@ -17,15 +17,24 @@ impl Config {
 
 #[derive(Clone)]
 pub struct RemoteConfig {
-    pub host: String,
-    pub port: u16,
+    pub enabled: bool,
+    pub listening: String,
 }
 
 impl Default for RemoteConfig {
     fn default() -> Self {
         Self {
-            host: "127.0.0.1".to_string(),
-            port: 4242,
+            enabled: false,
+            listening: "127.0.0.1:4242".to_string(),
+        }
+    }
+}
+
+impl RemoteConfig {
+    pub fn listening_at(listening: &str) -> Self {
+        Self {
+            enabled: true,
+            listening: listening.to_string(),
         }
     }
 }
@@ -34,6 +43,7 @@ impl Default for RemoteConfig {
 pub struct SchedulerConfig {
     // Maximum number of envelopes an actor can process at single scheduled execution
     pub actor_throughput: usize,
+    pub metric_reporting_enabled: bool,
     pub metric_reporting_interval: Duration,
     pub delay_precision: Duration,
     pub actor_worker_threads: usize,
@@ -44,6 +54,7 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         SchedulerConfig {
             actor_throughput: 1,
+            metric_reporting_enabled: false,
             metric_reporting_interval: Duration::from_secs(1),
             delay_precision: Duration::from_millis(1),
             actor_worker_threads: 4,

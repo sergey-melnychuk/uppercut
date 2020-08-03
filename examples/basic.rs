@@ -27,7 +27,7 @@ fn main() {
     run.spawn_default::<State>("x");
 
     let (tx, rx) = channel();
-    run.send("x", Envelope::of(Message(42, tx), ""));
+    run.send("x", Envelope::of(Message(42, tx)));
 
     rx.recv().unwrap();
     run.shutdown();

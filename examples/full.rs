@@ -56,7 +56,7 @@ impl AnyActor for Root {
                         self.count = 0;
                         println!("root completed the fanout of size: {} (epoch: {})", self.size, self.epoch);
                         let trigger = Fan::Trigger { size: self.size };
-                        let env = Envelope::of(trigger, sender.me());
+                        let env = Envelope::of(trigger).from(sender.me());
                         sender.send(&sender.myself(), env);
                         self.epoch += 1;
                     }
@@ -65,7 +65,7 @@ impl AnyActor for Root {
                     self.size = *size;
                     for id in 0..self.size {
                         let tag = format!("{}", id);
-                        let env = Envelope::of(Fan::Out { id }, sender.me());
+                        let env = Envelope::of(Fan::Out { id }).from(sender.me());
                         sender.send(&tag, env)
                     }
                 },
@@ -80,16 +80,16 @@ impl AnyActor for Round {
         if let Some(hit) = envelope.message.downcast_ref::<Hit>() {
             let next = (hit.0 + 1) % self.size;
             let tag = format!("{}", next);
-            let env = Envelope::of(Hit(hit.0 + 1), sender.me());
+            let env = Envelope::of(Hit(hit.0 + 1)).from(sender.me());
             sender.send(&tag, env);
         } else if let Some(acc) = envelope.message.downcast_ref::<Acc>() {
             let next = (acc.zero + acc.hits + 1) % self.size;
             let tag = format!("{}", next);
             let msg = Acc { name: acc.name.clone(), zero: acc.zero, hits: acc.hits + 1 };
-            let env = Envelope::of(msg, sender.me());
+            let env = Envelope::of(msg).from(sender.me());
             sender.send(&tag, env);
         } else if let Some(Fan::Out { id }) = envelope.message.downcast_ref::<Fan>() {
-            let env = Envelope::of(Fan::In { id: *id }, sender.me());
+            let env = Envelope::of(Fan::In { id: *id }).from(sender.me());
             sender.send(&envelope.from, env);
         } else {
             println!("unexpected message: {:?}", envelope.message.type_id());
@@ -141,7 +141,7 @@ impl AnyActor for Periodic {
                 }
                 self.timings.clear();
             }
-            let env = Envelope::of(Tick { at: Instant::now() }, sender.me());
+            let env = Envelope::of(Tick { at: Instant::now() }).from(sender.me());
             let delay = Duration::from_millis(10);
             sender.delay(&sender.myself(), env, delay);
         }
@@ -161,10 +161,10 @@ impl AnyActor for PingPong {
             }
             self.count += 1;
             if s == "ping" {
-                let r = Envelope::of("pong".to_string(), sender.me());
+                let r = Envelope::of("pong".to_string()).from(sender.me());
                 sender.send(&envelope.from, r);
             } else if s == "pong" {
-                let r = Envelope::of("ping".to_string(), sender.me());
+                let r = Envelope::of("ping".to_string()).from(sender.me());
                 sender.send(&envelope.from, r);
             }
         }
@@ -175,10 +175,10 @@ fn main() {
     let cores = num_cpus::get();
     let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 worker thread
 
-    let cfg = Config::new(
-        SchedulerConfig::with_total_threads(cores),
-        RemoteConfig::default());
-    let sys = System::new(&cfg);
+    let mut scheduler_config = SchedulerConfig::with_total_threads(cores);
+    scheduler_config.metric_reporting_enabled = true;
+    let cfg = Config::new(scheduler_config, RemoteConfig::default());
+    let sys = System::new("full", &cfg);
     let run = sys.run(&pool).unwrap();
 
     const SIZE: usize = 100_000;
@@ -187,27 +187,27 @@ fn main() {
         run.spawn(&tag, || Box::new(Round::new(SIZE)));
     }
 
-    run.send("0", Envelope::of(Hit(0), ""));
+    run.send("0", Envelope::of(Hit(0)));
 
     for id in 0..1000 {
         let tag = format!("{}", id);
         let acc = Acc { name: tag.clone(), zero: id, hits: 0 };
-        let env = Envelope::of(acc, &tag);
+        let env = Envelope::of(acc).from(&tag);
         run.send(&tag, env);
     }
 
     run.spawn_default::<Root>("root");
-    let env = Envelope::of(Fan::Trigger { size: SIZE }, "root");
+    let env = Envelope::of(Fan::Trigger { size: SIZE }).from("root");
     run.send("root", env);
 
     run.spawn_default::<Periodic>("timer");
-    let tick = Envelope::of(Tick { at: Instant::now() }, "timer");
+    let tick = Envelope::of(Tick { at: Instant::now() }).from("timer");
     run.delay("timer", tick, Duration::from_secs(10));
 
     run.spawn_default::<PingPong>("ping");
     run.spawn_default::<PingPong>("pong");
 
-    let ping = Envelope::of("ping".to_string(), "pong");
+    let ping = Envelope::of("ping".to_string()).from("pong");
     run.send("ping", ping);
 
     std::thread::park(); // block current thread (https://doc.rust-lang.org/std/thread/fn.park.html)
