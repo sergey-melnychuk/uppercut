@@ -9,7 +9,7 @@ use mio::net::TcpStream;
 use parser_combinators::stream::ByteStream;
 use std::collections::HashMap;
 
-use bytes::{BytesMut, BufMut, Bytes};
+use bytes::{BytesMut, BufMut};
 
 use crate::api::{AnyActor, AnySender, Envelope};
 
@@ -53,8 +53,8 @@ impl Client {
         Ok(id)
     }
 
-    pub fn poll(&mut self, timeout: Option<Duration>) {
-        self.poll.poll(&mut self.events, timeout).unwrap();
+    pub fn poll(&mut self, timeout: Duration) {
+        self.poll.poll(&mut self.events, Some(timeout)).unwrap();
 
         for event in &self.events {
             let id = event.token().0;
@@ -76,7 +76,7 @@ impl Client {
                 self.poll.registry()
                     .reregister(connection.socket.as_mut().unwrap(),
                                 event.token(),
-                                Interest::READABLE.add(Interest::READABLE)).unwrap();
+                                Interest::READABLE.add(Interest::WRITABLE)).unwrap();
 
                 self.connections.insert(id, connection);
             } else {
@@ -167,23 +167,25 @@ struct Loop;
 
 impl AnyActor for Client {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
-        println!("client: received an envelope");
         if let Some(_) = envelope.message.downcast_ref::<Loop>() {
-            self.poll(None);
+            self.poll(Duration::from_millis(1));
             let me = sender.myself();
-            sender.send(&me, Envelope::of(Loop));
+            sender.send(&me, envelope);
         } else if let Some(vec) = envelope.message.downcast_ref::<Vec<u8>>() {
-            println!("client: received an envelope: of Vec<u8>");
+
+            // TODO extract preparation of payload for sending into the socket
             let (to, host) = split_address(envelope.to);
             let from = envelope.from.to_owned();
             let ok = self.has(&host) || self.connect(&host).is_ok();
 
             if ok {
-                let cap: usize = 3 * 4 + vec.len() + to.len() + from.len();
+                // TODO extract binary serialization logic
+                let cap: usize = 3 * 4 + 2 + vec.len() + to.len() + from.len();
                 let mut buf = BytesMut::with_capacity(cap);
                 buf.put_u32(to.len() as u32);
                 buf.put_u32(from.len() as u32);
                 buf.put_u32(vec.len() as u32);
+                buf.put_u16(self.response_port);
                 buf.put(to.as_bytes());
                 buf.put(from.as_bytes());
                 buf.put(vec.as_ref());
@@ -192,8 +194,7 @@ impl AnyActor for Client {
                          self.response_port, to, host, from, vec,
                          String::from_utf8(vec.clone()).unwrap());
 
-                let n = self.put(&host, buf.as_ref());
-                println!("client: bytes sent: {}", n);
+                self.put(&host, buf.as_ref());
             }
 
         } else if let Some(_) = envelope.message.downcast_ref::<StartClient>() {
