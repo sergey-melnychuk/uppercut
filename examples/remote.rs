@@ -1,8 +1,9 @@
+use std::time::Duration;
+
 use uppercut::pool::ThreadPool;
 use uppercut::config::{Config, RemoteConfig, SchedulerConfig};
 use uppercut::core::System;
 use uppercut::api::{Envelope, AnyActor, AnySender};
-use std::time::Duration;
 
 #[derive(Default)]
 struct PingPong;
