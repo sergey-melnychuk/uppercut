@@ -22,6 +22,7 @@ features = ["os-poll", "tcp"]
 [dev-dependencies]
 bencher = "0.1.5"
 num_cpus = "1.13.0"
+clap = "2.33.1"
 
 [[bench]]
 name = "workload"
