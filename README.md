@@ -1,10 +1,19 @@
 ![](https://github.com/sergey-melnychuk/uppercut/workflows/Rust/badge.svg)
 
-### Uppercut
+## Uppercut
 
 Simple and small actor model implementation.
 
-#### Example
+### Example
+
+#### `Cargo.toml`
+
+```toml
+[dependencies]
+uppercut = "0.2"
+```
+
+#### `src/main.rs`
 
 ```rust
 use std::sync::mpsc::{channel, Sender};
