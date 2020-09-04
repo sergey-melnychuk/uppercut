@@ -23,6 +23,7 @@ features = ["os-poll", "tcp"]
 bencher = "0.1.5"
 num_cpus = "1.13.0"
 clap = "2.33.1"
+rand = "0.7.3"
 
 [[bench]]
 name = "workload"
