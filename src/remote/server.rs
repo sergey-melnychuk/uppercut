@@ -55,26 +55,22 @@ impl Server {
 
 impl AnyActor for Server {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
-        if let Some(_) = envelope.message.downcast_ref::<Loop>() {
+        if envelope.message.downcast_ref::<Loop>().is_some() {
             self.poll.poll(&mut self.events, Some(Duration::from_millis(1))).unwrap();
             for event in self.events.iter() {
                 match event.token() {
                     Token(0) => {
-                        loop {
-                            if let Ok((mut socket, _)) = self.socket.accept() {
-                                self.counter += 1;
-                                let token = Token(self.counter);
-                                self.poll.registry()
-                                    .register(&mut socket, token,
-                                              Interest::READABLE | Interest::WRITABLE)
-                                    .unwrap();
-                                let tag = format!("{}", self.counter);
-                                sender.spawn(&tag, || Box::new(Connection::default()));
-                                let connect = Connect { socket: Some(socket), keep_alive: true };
-                                sender.send(&tag, Envelope::of(connect));
-                            } else {
-                                break
-                            }
+                        while let Ok((mut socket, _)) = self.socket.accept() {
+                            self.counter += 1;
+                            let token = Token(self.counter);
+                            self.poll.registry()
+                                .register(&mut socket, token,
+                                          Interest::READABLE | Interest::WRITABLE)
+                                .unwrap();
+                            let tag = format!("{}", self.counter);
+                            sender.spawn(&tag, || Box::new(Connection::default()));
+                            let connect = Connect { socket: Some(socket), keep_alive: true };
+                            sender.send(&tag, Envelope::of(connect));
                         }
                     },
                     token => {
@@ -86,7 +82,7 @@ impl AnyActor for Server {
             }
             let me = sender.myself();
             sender.send(&me, Envelope::of(Loop));
-        } else if let Some(_) = envelope.message.downcast_ref::<StartServer>() {
+        } else if envelope.message.downcast_ref::<StartServer>().is_some() {
             let me = sender.myself();
             sender.send(&me, Envelope::of(Loop));
         }
@@ -197,14 +193,12 @@ impl AnyActor for Connection {
             }
 
             if self.can_write && self.send_buf.len() > 0 {
-                if self.send_buf.len() > 0 {
-                    match self.socket.as_ref().unwrap().write_all(self.send_buf.as_ref()) {
-                        Ok(_) => {
-                            self.send_buf.clear();
-                        },
-                        _ => {
-                            self.is_open = false;
-                        }
+                match self.socket.as_ref().unwrap().write_all(self.send_buf.as_ref()) {
+                    Ok(_) => {
+                        self.send_buf.clear();
+                    },
+                    _ => {
+                        self.is_open = false;
                     }
                 }
             }

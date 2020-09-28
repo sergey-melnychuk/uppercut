@@ -47,7 +47,7 @@ impl Client {
         let id = self.counter;
         self.poll.registry().register(&mut socket, Token(id), Interest::WRITABLE).unwrap();
 
-        let connection = Connection::connected(id, addr.to_string(), socket, 1024);
+        let connection = Connection::connected(addr.to_string(), socket, 1024);
         self.connections.insert(id, connection);
         self.destinations.insert(addr.to_string(), id);
         Ok(id)
@@ -85,10 +85,6 @@ impl Client {
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.connections.is_empty()
-    }
-
     pub fn has(&self, addr: &str) -> bool {
         self.destinations.contains_key(addr)
     }
@@ -98,16 +94,9 @@ impl Client {
         let id = self.destinations.get(&target).unwrap();
         self.connections.get_mut(id).unwrap().send_buf.put(payload)
     }
-
-    pub fn get(&mut self, addr: &str) -> Option<&mut ByteStream> {
-        let target = addr.to_string();
-        let id = self.destinations.get(&target).unwrap();
-        self.connections.get_mut(id).map(|c| &mut c.recv_buf)
-    }
 }
 
 struct Connection {
-    token: Token,
     target: String,
     socket: Option<TcpStream>,
     is_open: bool,
@@ -117,9 +106,8 @@ struct Connection {
 }
 
 impl Connection {
-    fn connected(id: usize, target: String, socket: TcpStream, buffer_size: usize) -> Self {
+    fn connected(target: String, socket: TcpStream, buffer_size: usize) -> Self {
         Self {
-            token: Token(id),
             target,
             socket: Some(socket),
             is_open: true,
@@ -167,7 +155,7 @@ struct Loop;
 
 impl AnyActor for Client {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
-        if let Some(_) = envelope.message.downcast_ref::<Loop>() {
+        if envelope.message.downcast_ref::<Loop>().is_some() {
             self.poll(Duration::from_millis(1));
             let me = sender.myself();
             sender.send(&me, envelope);
@@ -196,7 +184,7 @@ impl AnyActor for Client {
                 self.put(&host, buf.as_ref());
             }
 
-        } else if let Some(_) = envelope.message.downcast_ref::<StartClient>() {
+        } else if envelope.message.downcast_ref::<StartClient>().is_some() {
             let me = sender.myself();
             sender.send(&me, Envelope::of(Loop));
         }
@@ -205,8 +193,7 @@ impl AnyActor for Client {
 
 fn split_address(address: String) -> (String, String) {
     if address.contains('@') {
-        let split = address.split("@")
-            .into_iter()
+        let split = address.split('@')
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
         (split[0].to_owned(), split[1].to_owned())
