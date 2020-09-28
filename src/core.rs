@@ -5,6 +5,7 @@ use std::sync::{Mutex, Arc};
 use std::time::{Instant, Duration, SystemTime};
 use std::cmp::Ordering;
 use std::ops::Add;
+use std::panic::{self, AssertUnwindSafe};
 
 use crossbeam_channel::{unbounded, Sender, Receiver};
 
@@ -257,7 +258,14 @@ fn worker_loop(tx: Sender<Action>,
                 Event::Mail { tag, mut actor, queue } => {
                     memory.own = tag.clone();
                     for envelope in queue.into_iter() {
-                        actor.receive(envelope, &mut memory);
+                        let from = envelope.from.clone();
+                        // TODO If actor did have a panic, what to do with it?
+                        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                            actor.receive(envelope, &mut memory);
+                        }));
+                        if result.is_err() {
+                            println!("Actor '{}' failed to process message  from '{:?}'", tag, from);
+                        }
                     }
                     let sent = tx.send(Action::Return { tag, actor });
                     if sent.is_err() {

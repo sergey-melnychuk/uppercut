@@ -9,6 +9,12 @@ documentation = "https://github.com/sergey-melnychuk/uppercut"
 homepage = "https://github.com/sergey-melnychuk/uppercut"
 repository = "https://github.com/sergey-melnychuk/uppercut"
 
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
+
 [dependencies]
 core_affinity = "0.5.10"
 crossbeam-channel = "0.4.2"
