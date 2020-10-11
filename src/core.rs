@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::any::Any;
 use std::collections::{HashMap, BinaryHeap, HashSet};
-use std::sync::{Mutex, Arc};
 use std::time::{Instant, Duration, SystemTime};
 use std::cmp::Ordering;
 use std::ops::Add;
@@ -249,21 +248,21 @@ impl<'a> Run<'a> {
 }
 
 fn worker_loop(tx: Sender<Action>,
-               rx: Arc<Mutex<Receiver<Event>>>) {
+               rx: Receiver<Event>) {
     let mut memory: Memory<Envelope> = Memory::default();
     loop {
-        let event = rx.lock().unwrap().try_recv();
+        let event = rx.try_recv();
         if let Ok(x) = event {
             match x {
                 Event::Mail { tag, mut actor, queue } => {
                     memory.own = tag.clone();
                     for envelope in queue.into_iter() {
                         let from = envelope.from.clone();
-                        // TODO If actor did have a panic, what to do with it?
                         let result = panic::catch_unwind(AssertUnwindSafe(|| {
                             actor.receive(envelope, &mut memory);
                         }));
                         if result.is_err() {
+                            // TODO If actor did have a panic, what to do with it?
                             println!("Actor '{}' failed to process message  from '{:?}'", tag, from);
                         }
                     }
@@ -390,13 +389,12 @@ fn start_actor_runtime(name: String,
                        actions: (Sender<Action>, Receiver<Action>)) {
     let (actions_tx, actions_rx) = actions;
     let (events_tx, events_rx) = events;
-    let events_rx = Arc::new(Mutex::new(events_rx));
 
     let scheduler = Scheduler::with_config(&scheduler_config);
 
     let thread_count = scheduler.config.actor_worker_threads;
     for _ in 0..thread_count {
-        let rx = Arc::clone(&events_rx);
+        let rx = events_rx.clone();
         let tx = actions_tx.clone();
 
         pool.submit(move || {
