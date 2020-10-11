@@ -1,6 +1,6 @@
 use crossbeam_channel::{unbounded, Sender, Receiver};
-use std::thread;
-use std::thread::JoinHandle;
+use std::thread::{self, JoinHandle};
+use std::panic::{self, AssertUnwindSafe};
 
 extern crate core_affinity;
 use core_affinity::CoreId;
@@ -34,7 +34,7 @@ impl ThreadPool {
             } else {
                 None
             };
-            let worker = Worker::new(receiver.clone(), core_id);
+            let worker = Worker::new(idx, receiver.clone(), core_id);
             workers.push(worker);
         }
 
@@ -83,20 +83,27 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(receiver: Receiver<Job>, core_id: Option<CoreId>) -> Worker {
-        let thread = thread::spawn(move || {
-            if let Some(id) = core_id {
-                core_affinity::set_for_current(id);
-            }
-            loop {
-                let job = receiver.recv();
-                match job {
-                    Ok(Job::Task(f)) => f(),
-                    Ok(Job::Stop) => break,
-                    Err(_) => break
+    fn new(id: usize, receiver: Receiver<Job>, core_id: Option<CoreId>) -> Worker {
+        let thread = thread::Builder::new()
+            .name(format!("worker-{}", id))
+            .spawn(move || {
+                if let Some(id) = core_id {
+                    core_affinity::set_for_current(id);
                 }
-            }
-        });
+                loop {
+                    let job = receiver.recv();
+                    match job {
+                        Ok(Job::Task(f)) => {
+                            let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+                                f();
+                            }));
+                        },
+                        Ok(Job::Stop) => break,
+                        Err(_) => break
+                    }
+                }
+            })
+            .unwrap();
 
         Worker {
             thread: Some(thread),
