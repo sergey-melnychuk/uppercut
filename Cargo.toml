@@ -17,7 +17,7 @@ panic = "unwind"
 
 [dependencies]
 core_affinity = "0.5.10"
-crossbeam-channel = "0.4.2"
+crossbeam-channel = "0.4.4"
 parsed = "0.1.4"
 bytes = "0.5.6"
 
