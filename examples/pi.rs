@@ -10,7 +10,6 @@ extern crate num_cpus;
 
 extern crate rand;
 use rand::Rng;
-use std::time::Duration;
 
 #[derive(Default)]
 struct Master {
@@ -77,7 +76,7 @@ impl AnyActor for Worker {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cores = num_cpus::get();
     let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 worker thread
 
@@ -90,8 +89,9 @@ fn main() {
     let pi = Envelope::of(Pi { workers: 10000, throws: 100000, result: tx });
     run.send("master", pi);
 
-    let pi = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    let pi = rx.recv().unwrap();
     println!("Pi estimate: {}", pi);
 
     run.shutdown();
+    Ok(())
 }
