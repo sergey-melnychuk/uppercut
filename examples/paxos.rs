@@ -111,9 +111,9 @@ impl Agent {
 
                 let quorum = self.accepted_by.len() >= self.others().len() / 2 + 1;
                 if quorum {
-                    self.others()
-                        .into_iter()
-                        .map(|addr| (addr, Message::Selected { seq, val }))
+                    self.peers
+                        .iter()
+                        .map(|addr| (addr.clone(), Message::Selected { seq, val }))
                         .collect()
                 } else {
                     vec![]
@@ -132,7 +132,7 @@ impl Agent {
         self.peers
             .iter()
             .filter(|addr| *addr != &self.me)
-            .map(|s| s.to_owned())
+            .map(|s| s.clone())
             .collect()
     }
 }
@@ -184,9 +184,12 @@ fn main() {
         run.send(address, envelope);
     }
 
-    let msg = Message::Request { val: 42 };
-    let envelope = Envelope::of(msg);
-    run.send(peers.get(0).unwrap(), envelope);
+    let values = vec![42, 101, 13];
+    for val in values {
+        let msg = Message::Request { val };
+        let envelope = Envelope::of(msg);
+        run.send(peers.get(0).unwrap(), envelope);
+    }
 
     std::thread::park();
 }
