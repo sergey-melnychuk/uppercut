@@ -10,6 +10,7 @@ extern crate num_cpus;
 
 extern crate rand;
 use rand::Rng;
+use std::time::Instant;
 
 #[derive(Default)]
 struct Master {
@@ -62,8 +63,8 @@ impl AnyActor for Worker {
             let mut hits: usize = 0;
             let mut rng = rand::thread_rng();
             for _ in 0..*size {
-                let x: f64 = rng.gen_range(0.0, 1.0);
-                let y: f64 = rng.gen_range(0.0, 1.0);
+                let x: f64 = rng.gen_range(-1.0, 1.0);
+                let y: f64 = rng.gen_range(-1.0, 1.0);
 
                 if (x*x + y*y).sqrt() <= 1.0 {
                     hits += 1;
@@ -84,13 +85,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sys = System::new("pi", &cfg);
     let run = sys.run(&pool).unwrap();
 
+    let now = Instant::now();
     let (tx, rx) = channel();
     run.spawn_default::<Master>("master");
-    let pi = Envelope::of(Pi { workers: 10000, throws: 100000, result: tx });
-    run.send("master", pi);
+    let pi = Pi { workers: 10000, throws: 100000, result: tx };
+    println!("Submitting {} workers making {} throws each.", pi.workers, pi.throws);
+    let envelope = Envelope::of(pi);
+    run.send("master", envelope);
 
     let pi = rx.recv().unwrap();
-    println!("Pi estimate: {}", pi);
+    let seconds = now.elapsed().as_secs();
+    println!("Pi estimate: {} (in {} seconds)", pi, seconds);
 
     run.shutdown();
     Ok(())
