@@ -127,13 +127,13 @@ impl PartialEq for Entry {
 
 impl Ord for Entry {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.at.cmp(&other.at)
+        self.partial_cmp(other).unwrap()
     }
 }
 
 impl PartialOrd for Entry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.at.cmp(&other.at))
+        Some(self.at.cmp(&other.at).reverse())
     }
 }
 
@@ -338,7 +338,7 @@ fn event_loop(actions_rx: Receiver<Action>,
                     }
                 },
                 Action::Delay { entry } => {
-                    metrics.delays +=1 ;
+                    metrics.delays += 1 ;
                     scheduler.tasks.push(entry);
                 },
                 Action::Stop { tag } => {

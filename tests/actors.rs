@@ -172,3 +172,50 @@ fn message_order_perceived() -> Result<(), RecvTimeoutError> {
         Ok(vec)
     })
 }
+
+struct Fan(String, usize);
+
+impl AnyActor for Fan {
+    fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
+        if let Some(n) = envelope.message.downcast_ref::<usize>() {
+            for x in 0..*n {
+                let response = Envelope::of((x, self.1));
+                sender.delay(&self.0, response, Duration::from_millis(100));
+                self.1 += 1;
+            }
+        }
+    }
+}
+
+struct Echo(Sender<(usize, usize)>);
+
+impl AnyActor for Echo {
+    fn receive(&mut self, envelope: Envelope, _sender: &mut dyn AnySender) {
+        if let Some(pair) = envelope.message.downcast_ref::<(usize, usize)>() {
+            self.0.send(pair.to_owned()).unwrap();
+        }
+    }
+}
+
+#[test]
+fn delayed_messages_ordering() -> Result<(), RecvTimeoutError> {
+    const N: usize = 3;
+    let seq: Vec<usize> = (0..N).into_iter().collect();
+    let expected: Vec<(usize, usize)> = seq.iter()
+        .map(|x| (*x, *x))
+        .collect();
+    with_run(expected, |run| {
+        let (tx, rx) = channel();
+        run.spawn("echo", || Box::new(Echo(tx)));
+        run.spawn("seq", || Box::new(Fan("echo".to_string(), 0)));
+
+        run.send("seq", Envelope::of(N));
+        let mut actual = Vec::with_capacity(N);
+        for _ in 0..N {
+            let x = rx.recv_timeout(TIMEOUT)?;
+            actual.push(x);
+        }
+
+        Ok(actual)
+    })
+}
