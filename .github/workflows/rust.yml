@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Build
@@ -17,7 +17,3 @@ jobs:
         run: cargo test --verbose
       - name: Run benches
         run: cargo bench --verbose
-      - name: Test coverage
-        uses: actions-rs/tarpaulin@v0.1.0
-        with:
-          run-types: Tests
