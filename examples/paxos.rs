@@ -1,16 +1,23 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
+extern crate log;
+use log::trace;
+
 extern crate chrono;
 use chrono::Local;
 
 extern crate bytes;
 use bytes::{Bytes, Buf, BytesMut, BufMut};
 
+use crossbeam_channel::{bounded, Sender};
+
 extern crate uppercut;
 use uppercut::api::{AnyActor, Envelope, AnySender};
 use uppercut::core::System;
 use uppercut::pool::ThreadPool;
+
+const SEND_DELAY_MILLIS: u64 = 1000;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum Message {
@@ -92,10 +99,12 @@ mod tests {
 struct Agent {
     me: String,
     peers: Vec<String>,
+    clients: HashSet<String>,
     delay_millis: u64,
 
     seq: u64,
     val: u64,
+    storage: Vec<(u64, u64)>,
 
     promised: u64,
     accepted: u64,
@@ -105,15 +114,12 @@ struct Agent {
 }
 
 impl Agent {
-    fn time(&self) -> String {
-        let date = Local::now();
-        date.format("%Y-%m-%d %H:%M:%S%.3f").to_string()
-    }
-
     fn handle(&mut self, message: Message, from: String) -> Vec<(String, Message)> {
         match message {
-            Message::Request { val } => { // TODO propagate `val` from `Request` to `Selected`
+            Message::Request { val } => {
                 self.seq += 1;
+                self.val = val;
+                self.clients.insert(from);
                 self.others()
                     .into_iter()
                     .map(|addr| (addr, Message::Prepare { seq: self.seq }))
@@ -121,6 +127,7 @@ impl Agent {
             },
 
             Message::Prepare { seq } => {
+                self.seq = self.seq.max(seq);
                 if seq <= self.promised {
                     vec![(from, Message::Ignored { seq, top: self.promised })]
                 } else {
@@ -141,9 +148,8 @@ impl Agent {
                     vec![]
                 }
             },
-            Message::Ignored { seq: _, top: hi } => {
-                self.seq = hi;
-                self.promised = 0;
+            Message::Ignored { seq: _, top } => {
+                self.seq = self.seq.max(top);
                 vec![]
             },
 
@@ -151,9 +157,6 @@ impl Agent {
                 if seq < self.promised {
                     vec![(from, Message::Rejected { seq })]
                 } else {
-                    self.seq = seq;
-                    self.val = val;
-                    self.promised = seq;
                     self.accepted = seq;
                     vec![(from, Message::Accepted { seq, val })]
                 }
@@ -174,9 +177,16 @@ impl Agent {
             Message::Rejected { seq: _ } => {
                 vec![]
             },
-            Message::Selected { seq: _, val } => {
-                self.val = val;
-                vec![]
+            Message::Selected { seq, val } => {
+                self.storage.push((seq, val));
+
+                self.promised_by.clear();
+                self.accepted_by.clear();
+
+                self.clients
+                    .iter()
+                    .map(|addr| (addr.clone(), Message::Selected { seq, val }))
+                    .collect()
             },
             _ => vec![]
         }
@@ -199,7 +209,7 @@ enum Control {
 impl AnyActor for Agent {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(msg) = envelope.message.downcast_ref::<Message>() {
-            println!("{} actor={} message/local={:?}", self.time(), sender.me(), msg);
+            trace!("{} actor={} message/local={:?}", time(), sender.me(), msg);
             self.handle(msg.clone(), envelope.from)
                 .into_iter()
                 .for_each(|(target, msg)| {
@@ -212,7 +222,7 @@ impl AnyActor for Agent {
                 });
         } else if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let msg: Message = buf.to_owned().into();
-            println!("{} actor={} message/parse={:?}", self.time(), sender.me(), msg);
+            trace!("{} actor={} message/parse={:?}", time(), sender.me(), msg);
             self.handle(msg.clone(), envelope.from)
                 .into_iter()
                 .for_each(|(target, msg)| {
@@ -235,7 +245,75 @@ impl AnyActor for Agent {
     }
 }
 
+#[derive(Debug, Default)]
+struct Client {
+    n: u32,
+    id: u64,
+    val: u64,
+    done: bool,
+    nodes: Vec<String>,
+    log: Vec<u64>,
+    sender: Option<Sender<(String, Vec<u64>)>>,
+}
+
+struct Setup(u32, u64, u64, Vec<String>, Sender<(String, Vec<u64>)>);
+
+impl AnyActor for Client {
+    fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
+        if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
+            let message: Message = buf.to_owned().into();
+            trace!("{} actor={} message={:?}", time(), sender.me(), message);
+            match message {
+                Message::Selected { seq: _, val } => {
+                    self.log.push(val);
+                    trace!("\tactor={} log={:?}", sender.me(), self.log);
+                    self.done |= val == self.val;
+                    if !self.done {
+                        let idx: usize = self.id as usize % self.nodes.len();
+                        let target = self.nodes.get(idx).unwrap();
+                        let msg = Message::Request { val: self.val };
+                        let buf: Vec<u8> = msg.into();
+                        let envelope = Envelope::of(buf).from(sender.me());
+                        let delay = Duration::from_millis(SEND_DELAY_MILLIS);
+                        sender.delay(target, envelope, delay);
+                    }
+
+                    if self.log.len() == self.n as usize {
+                        self.sender.as_ref().unwrap()
+                            .send((sender.me().to_string(), self.log.clone())).unwrap()
+                    }
+                },
+                _ => ()
+            }
+        } else if let Some(setup) = envelope.message.downcast_ref::<Setup>() {
+            self.n = setup.0;
+            self.id = setup.1;
+            self.val = setup.2;
+            self.done = false;
+            self.nodes = setup.3.to_owned();
+            self.sender = Some(setup.4.to_owned());
+            trace!("{} actor={} val={} seq={:?}", time(), sender.me(), self.val, self.log);
+
+            let idx: usize = self.id as usize % self.nodes.len();
+            let target = self.nodes.get(idx).unwrap();
+            let msg = Message::Request { val: self.val };
+            let buf: Vec<u8> = msg.into();
+            let envelope = Envelope::of(buf).from(sender.me());
+            sender.send(target, envelope);
+        }
+    }
+}
+
+fn time() -> String {
+    let date = Local::now();
+    date.format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+}
+
+// Run with:
+// RUST_LOG=trace cargo run --example paxos
 fn main() {
+    env_logger::init();
+
     let sys = System::default();
     let pool = ThreadPool::new(6);
     let run = sys.run(&pool).unwrap();
@@ -243,23 +321,30 @@ fn main() {
     const N: usize = 3;
     let peers: Vec<String> = (0..N)
         .into_iter()
-        .map(|i| format!("{}", i))
+        .map(|i| format!("node-{}", i))
         .collect();
-    let millis = 1000;
 
     for address in peers.iter() {
         run.spawn_default::<Agent>(address);
-        let envelope = Envelope::of(Control::Init(peers.clone(), millis));
+        let envelope = Envelope::of(Control::Init(peers.clone(), SEND_DELAY_MILLIS));
         run.send(address, envelope);
     }
 
-    let values = vec![42, 101, 13];
-    for val in values {
-        let msg = Message::Request { val };
-        let buf: Vec<u8> = msg.into();
-        let envelope = Envelope::of(buf);
-        run.send(peers.get(0).unwrap(), envelope);
+    let clients = vec![("client-A", 30), ("client-B", 73), ("client-C", 42)];
+    let (tx, rx) = bounded(clients.len());
+
+    for (id, (tag, val)) in clients.clone().into_iter().enumerate() {
+        run.spawn_default::<Client>(tag);
+        let setup = Setup(clients.len() as u32, id as u64, val, peers.clone(), tx.clone());
+        let envelope = Envelope::of(setup);
+        run.send(tag, envelope);
+        println!("{}: {}", tag, val);
     }
 
-    std::thread::park();
+    for _ in 0..clients.len() {
+        let received = rx.recv().unwrap();
+        println!("{:?}", received);
+    }
+
+    run.shutdown();
 }
