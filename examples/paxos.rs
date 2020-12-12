@@ -18,7 +18,7 @@ use uppercut::config::{Config};
 use uppercut::core::{Run, System};
 use uppercut::pool::ThreadPool;
 
-const SEND_DELAY_MILLIS: u64 = 20;
+const SEND_DELAY_MILLIS: u64 = 100;
 
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -211,30 +211,18 @@ enum Control {
 
 impl AnyActor for Agent {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
-        if let Some(msg) = envelope.message.downcast_ref::<Message>() {
-            info!("{} actor={} message/local={:?}", time(), sender.me(), msg);
-            self.handle(msg.clone(), envelope.from)
-                .into_iter()
-                .for_each(|(target, msg)| {
-                    let buf: Vec<u8> = msg.into();
-                    let envelope = Envelope::of(buf)
-                        .to(&target)
-                        .from(sender.me());
-                    let delay = Duration::from_millis(self.delay_millis);
-                    sender.delay(&target, envelope, delay);
-                });
-        } else if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
+        if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let msg: Message = buf.to_owned().into();
-            info!("{} actor={} message/parse={:?}", time(), sender.me(), msg);
+            info!("{} actor={} from={} message/parse={:?}", time(), sender.me(), envelope.from, msg);
             self.handle(msg.clone(), envelope.from)
                 .into_iter()
                 .for_each(|(target, msg)| {
+                    info!("\t{} sending to {}: {:?}", sender.me(), target, msg);
                     let buf: Vec<u8> = msg.into();
                     let envelope = Envelope::of(buf)
                         .to(&target)
                         .from(sender.me());
                     let delay = Duration::from_millis(self.delay_millis);
-                    debug!("\t{} sending to {}", sender.me(), target);
                     sender.delay(&target, envelope, delay);
                 });
         } else if let Some(ctrl) = envelope.message.downcast_ref::<Control>() {
