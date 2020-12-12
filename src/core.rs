@@ -133,6 +133,7 @@ impl Ord for Entry {
 
 impl PartialOrd for Entry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // Reverse ordering is required to turn max-heap (BinaryHeap) into min-heap.
         Some(self.at.cmp(&other.at).reverse())
     }
 }
