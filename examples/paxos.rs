@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 extern crate log;
-use log::trace;
+use log::{debug, info};
 
 extern crate chrono;
 use chrono::Local;
@@ -14,10 +14,12 @@ use crossbeam_channel::{bounded, Sender};
 
 extern crate uppercut;
 use uppercut::api::{AnyActor, Envelope, AnySender};
-use uppercut::core::System;
+use uppercut::config::{Config};
+use uppercut::core::{Run, System};
 use uppercut::pool::ThreadPool;
 
-const SEND_DELAY_MILLIS: u64 = 1000;
+const SEND_DELAY_MILLIS: u64 = 20;
+
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum Message {
@@ -117,6 +119,7 @@ impl Agent {
     fn handle(&mut self, message: Message, from: String) -> Vec<(String, Message)> {
         match message {
             Message::Request { val } => {
+                debug!("tag={} request.val={}", self.me, val);
                 self.seq += 1;
                 self.val = val;
                 self.clients.insert(from);
@@ -195,7 +198,7 @@ impl Agent {
     fn others(&self) -> Vec<String> {
         self.peers
             .iter()
-            .filter(|addr| *addr != &self.me)
+            .filter(|addr| !addr.starts_with(&self.me))
             .map(|s| s.clone())
             .collect()
     }
@@ -209,7 +212,7 @@ enum Control {
 impl AnyActor for Agent {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(msg) = envelope.message.downcast_ref::<Message>() {
-            trace!("{} actor={} message/local={:?}", time(), sender.me(), msg);
+            info!("{} actor={} message/local={:?}", time(), sender.me(), msg);
             self.handle(msg.clone(), envelope.from)
                 .into_iter()
                 .for_each(|(target, msg)| {
@@ -222,7 +225,7 @@ impl AnyActor for Agent {
                 });
         } else if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let msg: Message = buf.to_owned().into();
-            trace!("{} actor={} message/parse={:?}", time(), sender.me(), msg);
+            info!("{} actor={} message/parse={:?}", time(), sender.me(), msg);
             self.handle(msg.clone(), envelope.from)
                 .into_iter()
                 .for_each(|(target, msg)| {
@@ -231,6 +234,7 @@ impl AnyActor for Agent {
                         .to(&target)
                         .from(sender.me());
                     let delay = Duration::from_millis(self.delay_millis);
+                    debug!("\t{} sending to {}", sender.me(), target);
                     sender.delay(&target, envelope, delay);
                 });
         } else if let Some(ctrl) = envelope.message.downcast_ref::<Control>() {
@@ -239,6 +243,7 @@ impl AnyActor for Agent {
                     self.peers = peers.to_owned();
                     self.delay_millis = millis.clone();
                     self.me = sender.me().to_string();
+                    debug!("tag={} init: peers={:?} me={}", sender.me(), self.peers, self.me);
                 }
             }
         }
@@ -262,11 +267,10 @@ impl AnyActor for Client {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let message: Message = buf.to_owned().into();
-            trace!("{} actor={} message={:?}", time(), sender.me(), message);
+            info!("{} actor={} message={:?}", time(), sender.me(), message);
             match message {
                 Message::Selected { seq: _, val } => {
                     self.log.push(val);
-                    trace!("\tactor={} log={:?}", sender.me(), self.log);
                     self.done |= val == self.val;
                     if !self.done {
                         let idx: usize = self.id as usize % self.nodes.len();
@@ -292,7 +296,7 @@ impl AnyActor for Client {
             self.done = false;
             self.nodes = setup.3.to_owned();
             self.sender = Some(setup.4.to_owned());
-            trace!("{} actor={} val={} seq={:?}", time(), sender.me(), self.val, self.log);
+            info!("{} actor={} val={} seq={:?}", time(), sender.me(), self.val, self.log);
 
             let idx: usize = self.id as usize % self.nodes.len();
             let target = self.nodes.get(idx).unwrap();
@@ -310,30 +314,52 @@ fn time() -> String {
 }
 
 // Run with:
-// RUST_LOG=trace cargo run --example paxos
+// RUST_LOG=info cargo run --example paxos
 fn main() {
     env_logger::init();
-
-    let sys = System::default();
     let pool = ThreadPool::new(6);
-    let run = sys.run(&pool).unwrap();
+
+    let mut config = Config::default();
+    config.scheduler.actor_worker_threads = 1;
+    config.scheduler.extra_worker_threads = 0;
+    config.remote.enabled = true;
+
+    let runs: Vec<Run> = {
+        config.remote.listening = "127.0.0.1:9001".to_string();
+        let sys1 = System::new("paxos-1", &config);
+        let run1 = sys1.run(&pool).unwrap();
+
+        config.remote.listening = "127.0.0.1:9002".to_string();
+        let sys2 = System::new("paxos-2", &config);
+        let run2 = sys2.run(&pool).unwrap();
+
+        config.remote.listening = "127.0.0.1:9003".to_string();
+        let sys3 = System::new("paxos-3", &config);
+        let run3 = sys3.run(&pool).unwrap();
+
+        vec![run1, run2, run3]
+    };
 
     const N: usize = 3;
-    let peers: Vec<String> = (0..N)
+    let peers: Vec<String> = (0..N).zip(9001..(9001 + N))
         .into_iter()
-        .map(|i| format!("node-{}", i))
+        .map(|(i, port)| format!("node-{}@127.0.0.1:{}", i, port))
         .collect();
 
-    for address in peers.iter() {
-        run.spawn_default::<Agent>(address);
+    for (address, run) in peers.iter().zip(runs.iter()) {
+        let tag = address.split('@').next().unwrap();
+        run.spawn_default::<Agent>(tag);
         let envelope = Envelope::of(Control::Init(peers.clone(), SEND_DELAY_MILLIS));
-        run.send(address, envelope);
+        run.send(tag, envelope);
     }
 
-    let clients = vec![("client-A", 30), ("client-B", 73), ("client-C", 42)];
+    let clients = vec![
+        ("client-A", 30),
+        ("client-B", 73),
+        ("client-C", 42)];
     let (tx, rx) = bounded(clients.len());
 
-    for (id, (tag, val)) in clients.clone().into_iter().enumerate() {
+    for ((id, (tag, val)), run) in clients.clone().into_iter().enumerate().zip(runs.iter()) {
         run.spawn_default::<Client>(tag);
         let setup = Setup(clients.len() as u32, id as u64, val, peers.clone(), tx.clone());
         let envelope = Envelope::of(setup);
@@ -346,5 +372,6 @@ fn main() {
         println!("{:?}", received);
     }
 
-    run.shutdown();
+    runs.into_iter()
+        .for_each(|run| run.shutdown());
 }
