@@ -19,7 +19,7 @@ panic = "unwind"
 core_affinity = "0.5.10"
 crossbeam-channel = "0.4.4"
 parsed = "0.1.4"
-bytes = "0.5.6"
+bytes = "0.6.0"
 
 [dependencies.mio]
 version = "0.7.0"
