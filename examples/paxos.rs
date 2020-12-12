@@ -278,12 +278,13 @@ impl AnyActor for Client {
                 _ => ()
             }
         } else if let Some(setup) = envelope.message.downcast_ref::<Setup>() {
-            self.n = setup.0;
-            self.id = setup.1;
-            self.val = setup.2;
+            let Setup(n, id, val, nodes, tx) = setup;
+            self.n = *n;
+            self.id = *id;
+            self.val = *val;
             self.done = false;
-            self.nodes = setup.3.to_owned();
-            self.sender = Some(setup.4.to_owned());
+            self.nodes = nodes.to_owned();
+            self.sender = Some(tx.to_owned());
             info!("{} actor={} val={} seq={:?}", time(), sender.me(), self.val, self.log);
 
             let idx: usize = self.id as usize % self.nodes.len();
