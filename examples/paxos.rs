@@ -17,7 +17,7 @@ enum Message {
     Request { val: u64 },
     Prepare { seq: u64 },
     Promise { seq: u64 },
-    Ignored { seq: u64, hi: u64 },
+    Ignored { seq: u64, top: u64 },
     Accept { seq: u64, val: u64 },
     Accepted { seq: u64, val: u64 },
     Rejected { seq: u64 },
@@ -32,7 +32,7 @@ impl Into<Vec<u8>> for Message {
             Message::Request { val } => { buf.put_u8(1); buf.put_u64(val); },
             Message::Prepare { seq } => { buf.put_u8(2); buf.put_u64(seq); },
             Message::Promise { seq } => { buf.put_u8(3); buf.put_u64(seq); },
-            Message::Ignored { seq, hi } => { buf.put_u8(4); buf.put_u64(seq); buf.put_u64(hi); },
+            Message::Ignored { seq, top: hi } => { buf.put_u8(4); buf.put_u64(seq); buf.put_u64(hi); },
             Message::Accept { seq, val } => { buf.put_u8(5); buf.put_u64(seq); buf.put_u64(val); },
             Message::Accepted { seq, val } => { buf.put_u8(6); buf.put_u64(seq); buf.put_u64(val); },
             Message::Rejected { seq } => { buf.put_u8(7); buf.put_u64(seq); },
@@ -51,7 +51,7 @@ impl From<Vec<u8>> for Message {
             1 => Message::Request { val: buf.get_u64() },
             2 => Message::Prepare { seq: buf.get_u64() },
             3 => Message::Promise { seq: buf.get_u64() },
-            4 => Message::Ignored { seq: buf.get_u64(), hi: buf.get_u64() },
+            4 => Message::Ignored { seq: buf.get_u64(), top: buf.get_u64() },
             5 => Message::Accept { seq: buf.get_u64(), val: buf.get_u64() },
             6 => Message::Accepted { seq: buf.get_u64(), val: buf.get_u64() },
             7 => Message::Rejected { seq: buf.get_u64() },
@@ -71,7 +71,7 @@ mod tests {
             Message::Request { val: 42 },
             Message::Prepare { seq: 42 },
             Message::Promise { seq: 42 },
-            Message::Ignored { seq: 42, hi: 100500 },
+            Message::Ignored { seq: 42, top: 100500 },
             Message::Accept { seq: 42, val: 0xCAFEBABEDEADBEEF },
             Message::Accepted { seq: 42, val: 0xCAFEBABEDEADBEEF },
             Message::Rejected { seq: 42 },
@@ -122,7 +122,7 @@ impl Agent {
 
             Message::Prepare { seq } => {
                 if seq <= self.promised {
-                    vec![(from, Message::Ignored { seq, hi: self.promised })]
+                    vec![(from, Message::Ignored { seq, top: self.promised })]
                 } else {
                     self.promised = seq;
                     vec![(from, Message::Promise { seq })]
@@ -141,7 +141,7 @@ impl Agent {
                     vec![]
                 }
             },
-            Message::Ignored { seq: _, hi } => {
+            Message::Ignored { seq: _, top: hi } => {
                 self.seq = hi;
                 self.promised = 0;
                 vec![]
