@@ -356,11 +356,28 @@ fn main() {
         println!("{}: {}", tag, val);
     }
 
+    let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(clients.len() + 1);
     for _ in 0..clients.len() {
-        let received = rx.recv().unwrap();
-        println!("{:?}", received);
+        if let Ok(received) = rx.recv_timeout(Duration::from_secs(20)) {
+            println!("{:?}", received);
+            seen.insert(received.1);
+        } else {
+            break;
+        }
     }
 
     runs.into_iter()
         .for_each(|run| run.shutdown());
+
+    let ok = {
+        let numbers: Vec<u64> = clients.iter().map(|(_, n)| *n).collect();
+        seen.iter().all(|vec| numbers.iter().all(|x| vec.contains(x)))
+    };
+    if seen.len() == 1 && ok {
+        println!("OK");
+        std::process::exit(0);
+    } else {
+        println!("FAILED");
+        std::process::exit(1);
+    }
 }
