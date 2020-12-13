@@ -18,7 +18,7 @@ use uppercut::config::{Config};
 use uppercut::core::{Run, System};
 use uppercut::pool::ThreadPool;
 
-const SEND_DELAY_MILLIS: u64 = 100;
+const SEND_DELAY_MILLIS: u64 = 10;
 
 
 #[derive(Debug, Clone, Eq, PartialEq)]
