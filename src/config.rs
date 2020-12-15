@@ -25,7 +25,7 @@ impl Default for RemoteConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            listening: "127.0.0.1:4242".to_string(),
+            listening: Default::default(),
         }
     }
 }
