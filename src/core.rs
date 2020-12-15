@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::ops::Add;
 use std::panic::{self, AssertUnwindSafe};
 
-use crossbeam_channel::{unbounded, Sender, Receiver};
+use crossbeam_channel::{unbounded, Sender, Receiver, SendError};
 
 use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::metrics::{SchedulerMetrics};
@@ -46,23 +46,24 @@ impl AnySender for Memory<Envelope> {
 }
 
 impl Memory<Envelope> {
-    fn drain(&mut self, tx: &Sender<Action>) {
+    fn drain(&mut self, tx: &Sender<Action>) -> Result<(), SendError<Action>> {
         for (tag, actor) in self.new.drain().into_iter() {
             let action = Action::Spawn { tag, actor };
-            tx.send(action).unwrap();
+            tx.send(action)?;
         }
         for (tag, queue) in self.map.drain().into_iter() {
             let action = Action::Queue { tag, queue };
-            tx.send(action).unwrap();
+            tx.send(action)?;
         }
         for entry in self.delay.drain(..).into_iter() {
             let action = Action::Delay { entry };
-            tx.send(action).unwrap();
+            tx.send(action)?;
         }
         for tag in self.stop.drain().into_iter() {
             let action = Action::Stop { tag };
-            tx.send(action).unwrap_or_default();
+            tx.send(action)?;
         }
+        Ok(())
     }
 }
 
@@ -274,7 +275,9 @@ fn worker_loop(tx: Sender<Action>,
                 },
                 Event::Stop => break
             }
-            memory.drain(&tx);
+            if memory.drain(&tx).is_err() {
+                break;
+            }
         }
     }
 }
