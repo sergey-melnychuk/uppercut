@@ -21,6 +21,7 @@ crossbeam-channel = "0.4.4"
 parsed = "0.1.4"
 bytes = "0.6.0"
 log = "0.4"
+get_if_addrs = "0.5"
 
 [dependencies.mio]
 version = "0.7.0"

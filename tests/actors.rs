@@ -7,8 +7,8 @@ mod api;
 #[path = "../src/config.rs"]
 mod config;
 
-#[path = "../src/metrics.rs"]
-mod metrics;
+#[path = "../src/monitor.rs"]
+mod monitor;
 
 #[path = "../src/remote/mod.rs"]
 mod remote;
@@ -75,7 +75,7 @@ impl AnyActor for Counter {
 fn with_run<T: Eq + Debug, E, F: FnOnce(&Run) -> Result<T, E>>(expected: T, f: F) -> Result<(), E> {
     let cfg = Config::default();
     let pool: ThreadPool = ThreadPool::for_config(&cfg);
-    let sys = System::new("test", &cfg);
+    let sys = System::new("test", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
     let got = f(&run);
     run.shutdown();

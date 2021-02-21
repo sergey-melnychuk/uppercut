@@ -1,10 +1,15 @@
 use std::any::Any;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+use std::fmt::Debug;
 
 pub type Actor = Box<dyn AnyActor + Send>;
 
+pub type Message = Box<dyn Any + Send>;
+
 pub trait AnyActor {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender);
+    fn on_fail(&self, _error: Box<dyn Any + Send>, _sender: &mut dyn AnySender) {}
+    fn on_stop(&self, _sender: &mut dyn AnySender) {}
 }
 
 pub trait AnySender {
@@ -14,11 +19,13 @@ pub trait AnySender {
     fn spawn(&mut self, address: &str, f: fn() -> Actor);
     fn delay(&mut self, address: &str, envelope: Envelope, duration: Duration);
     fn stop(&mut self, address: &str);
+    fn log(&mut self, message: &str);
+    fn now(&self) -> SystemTime;
 }
 
 #[derive(Debug)]
 pub struct Envelope {
-    pub message: Box<dyn Any + Send>,
+    pub message: Message,
     pub from: String,
     pub to: String,
 }

@@ -178,7 +178,7 @@ fn main() {
     let mut scheduler_config = SchedulerConfig::with_total_threads(cores);
     scheduler_config.metric_reporting_enabled = true;
     let cfg = Config::new(scheduler_config, RemoteConfig::default());
-    let sys = System::new("full", &cfg);
+    let sys = System::new("full", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
 
     const SIZE: usize = 100_000;

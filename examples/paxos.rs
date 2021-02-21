@@ -300,15 +300,15 @@ fn main() {
 
     let runs: Vec<Run> = {
         config.remote.listening = "127.0.0.1:9001".to_string();
-        let sys1 = System::new("paxos-1", &config);
+        let sys1 = System::new("paxos-1", "localhost", &config);
         let run1 = sys1.run(&pool).unwrap();
 
         config.remote.listening = "127.0.0.1:9002".to_string();
-        let sys2 = System::new("paxos-2", &config);
+        let sys2 = System::new("paxos-2", "localhost", &config);
         let run2 = sys2.run(&pool).unwrap();
 
         config.remote.listening = "127.0.0.1:9003".to_string();
-        let sys3 = System::new("paxos-3", &config);
+        let sys3 = System::new("paxos-3", "localhost", &config);
         let run3 = sys3.run(&pool).unwrap();
 
         vec![run1, run2, run3]

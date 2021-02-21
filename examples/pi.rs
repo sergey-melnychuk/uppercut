@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 worker thread
 
     let cfg = Config::default();
-    let sys = System::new("pi", &cfg);
+    let sys = System::new("pi", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
 
     let now = Instant::now();

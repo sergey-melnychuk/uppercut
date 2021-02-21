@@ -51,7 +51,7 @@ fn main() {
     let cfg = Config::new(
         SchedulerConfig::with_total_threads(cores/2),
         RemoteConfig::listening_at(listen));
-    let sys = System::new("one", &cfg);
+    let sys = System::new("one", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
 
     run.spawn_default::<PingPong>("ping");

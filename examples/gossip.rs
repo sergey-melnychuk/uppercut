@@ -317,15 +317,15 @@ fn main() {
 
     let runs: Vec<Run> = {
         config.remote.listening = "127.0.0.1:9101".to_string();
-        let sys1 = System::new("gossip-1", &config);
+        let sys1 = System::new("gossip-1", "localhost", &config);
         let run1 = sys1.run(&pool).unwrap();
 
         config.remote.listening = "127.0.0.1:9102".to_string();
-        let sys2 = System::new("gossip-2", &config);
+        let sys2 = System::new("gossip-2", "localhost", &config);
         let run2 = sys2.run(&pool).unwrap();
 
         config.remote.listening = "127.0.0.1:9103".to_string();
-        let sys3 = System::new("gossip-3", &config);
+        let sys3 = System::new("gossip-3", "localhost", &config);
         let run3 = sys3.run(&pool).unwrap();
 
         vec![run1, run2, run3]

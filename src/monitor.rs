@@ -1,5 +1,23 @@
 use std::fmt;
 
+#[derive(Debug)]
+pub struct LogEntry {
+    pub at: u64,
+    pub host: String,
+    pub app: String,
+    pub tag: String,
+    pub log: String,
+}
+
+#[derive(Debug)]
+pub struct MetricEntry {
+    pub at: u64,
+    pub host: String,
+    pub app: String,
+    pub tag: String,
+    pub val: f64,
+}
+
 #[derive(Clone)]
 pub struct SchedulerMetrics {
     pub name: String,
@@ -14,6 +32,8 @@ pub struct SchedulerMetrics {
     pub spawns: u64,
     pub delays: u64,
     pub stops: u64,
+    pub drops: u64,
+    pub failures: u64,
     pub actors: u64,
 }
 
@@ -32,6 +52,8 @@ impl SchedulerMetrics {
             spawns: 0,
             delays: 0,
             stops: 0,
+            drops: 0,
+            failures: 0,
             actors: 0,
         }
     }
@@ -48,6 +70,8 @@ impl SchedulerMetrics {
         self.spawns = 0;
         self.delays = 0;
         self.stops = 0;
+        self.drops = 0;
+        self.failures = 0;
         self.actors = 0;
     }
 }
@@ -67,6 +91,8 @@ impl fmt::Debug for SchedulerMetrics {
             .field("spawns", &self.spawns)
             .field("delays", &self.delays)
             .field("stops", &self.stops)
+            .field("drops", &self.drops)
+            .field("failures", &self.failures)
             .field("actors", &self.actors)
             .finish()
     }
