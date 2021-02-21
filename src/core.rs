@@ -15,51 +15,51 @@ use crate::pool::{ThreadPool, Runnable};
 use crate::remote::server::{Server, StartServer};
 use crate::remote::client::{Client, StartClient};
 
-impl AnySender for Memory<Envelope> {
+impl AnySender for Local<Envelope> {
     fn me(&self) -> &str {
-        &self.own
+        &self.tag
     }
 
     fn myself(&self) -> String {
-        self.own.clone()
+        self.tag.clone()
     }
 
     fn send(&mut self, address: &str, mut envelope: Envelope) {
         let tag = adjust_remote_address(address, &mut envelope);
-        self.map.entry(tag.to_string()).or_default().push(envelope);
+        self.sent.entry(tag.to_string()).or_default().push(envelope);
     }
 
     fn spawn(&mut self, address: &str, f: fn() -> Actor) {
-        self.new.insert(address.to_string(), f());
+        self.spawns.insert(address.to_string(), f());
     }
 
     fn delay(&mut self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
         let tag = adjust_remote_address(address, &mut envelope);
         let entry = Entry { at, tag: tag.to_string(), envelope };
-        self.delay.push(entry);
+        self.delayed.push(entry);
     }
 
     fn stop(&mut self, address: &str) {
-        self.stop.insert(address.to_string());
+        self.stopped.insert(address.to_string());
     }
 }
 
-impl Memory<Envelope> {
+impl Local<Envelope> {
     fn drain(&mut self, tx: &Sender<Action>) -> Result<(), SendError<Action>> {
-        for (tag, actor) in self.new.drain().into_iter() {
+        for (tag, actor) in self.spawns.drain().into_iter() {
             let action = Action::Spawn { tag, actor };
             tx.send(action)?;
         }
-        for (tag, queue) in self.map.drain().into_iter() {
+        for (tag, queue) in self.sent.drain().into_iter() {
             let action = Action::Queue { tag, queue };
             tx.send(action)?;
         }
-        for entry in self.delay.drain(..).into_iter() {
+        for entry in self.delayed.drain(..).into_iter() {
             let action = Action::Delay { entry };
             tx.send(action)?;
         }
-        for tag in self.stop.drain().into_iter() {
+        for tag in self.stopped.drain().into_iter() {
             let action = Action::Stop { tag };
             tx.send(action)?;
         }
@@ -68,12 +68,12 @@ impl Memory<Envelope> {
 }
 
 #[derive(Default)]
-struct Memory<T: Any + Sized + Send> {
-    own: String,
-    map: HashMap<String, Vec<T>>,
-    new: HashMap<String, Actor>,
-    delay: Vec<Entry>,
-    stop: HashSet<String>,
+struct Local<T: Any + Sized + Send> {
+    tag: String,
+    sent: HashMap<String, Vec<T>>,
+    spawns: HashMap<String, Actor>,
+    delayed: Vec<Entry>,
+    stopped: HashSet<String>,
 }
 
 struct Scheduler {
@@ -251,13 +251,13 @@ impl<'a> Run<'a> {
 
 fn worker_loop(tx: Sender<Action>,
                rx: Receiver<Event>) {
-    let mut memory: Memory<Envelope> = Memory::default();
+    let mut memory: Local<Envelope> = Local::default();
     loop {
         let event = rx.try_recv();
         if let Ok(x) = event {
             match x {
                 Event::Mail { tag, mut actor, queue } => {
-                    memory.own = tag.clone();
+                    memory.tag = tag.clone();
                     for envelope in queue.into_iter() {
                         let from = envelope.from.clone();
                         let result = panic::catch_unwind(AssertUnwindSafe(|| {
