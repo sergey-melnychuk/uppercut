@@ -1,6 +1,6 @@
 [package]
 name = "uppercut"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["sergey-melnychuk"]
 edition = "2018"
 description = "Small and simple actor model implementation"
