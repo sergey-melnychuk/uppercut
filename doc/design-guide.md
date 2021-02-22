@@ -130,8 +130,8 @@ configuration remains, thus can be restarted any required number of attempts.
    - Scheduler metrics are collected and dumped to stdout (if enabled) in the event loop
    - Custom metrics: TBD similar as Logging
 1. Example implementations:
-   - PAXOS (distributed consensus - simple log replication)
-   - Gossip (heartbeat gossip distributed membership and failure detection)
+   - [PAXOS](/examples/paxos.rs) (distributed consensus - simple log replication)
+   - [Gossip](/examples/gossip.rs) (heartbeat gossip distributed membership and failure detection)
    - TODO Distributed Hash-Table (consistent hashing, chord, etc)
    - TODO Distributed Message Queue (routing, to keep in mind: persistence)
 
