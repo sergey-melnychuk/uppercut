@@ -337,7 +337,7 @@ fn event_loop(actions_rx: Receiver<Action>,
     'main: loop {
         let received = actions_rx.recv_timeout(Duration::from_millis(timeout_millis));
         if let Ok(action) = received {
-            timeout = std::cmp::max(min_timeout_millis, timeout / 2);
+            timeout_millis = std::cmp::max(min_timeout_millis, timeout_millis / 2);
             metrics.hit += 1;
             match action {
                 Action::Return { tag, actor, ok } if scheduler.active.contains(&tag) => {
@@ -391,8 +391,8 @@ fn event_loop(actions_rx: Receiver<Action>,
                     metrics.spawns += 1;
                     scheduler.active.insert(tag.clone());
                     scheduler.actors.insert(tag.clone(), actor);
-                    // TODO make default mailbox capacity configurable
-                    scheduler.queue.insert(tag.clone(), Vec::with_capacity(32));
+                    let mailbox = Vec::with_capacity(scheduler.config.default_mailbox_capacity);
+                    scheduler.queue.insert(tag.clone(), mailbox);
                 },
                 Action::Delay { entry } => {
                     metrics.delays += 1 ;

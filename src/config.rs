@@ -43,6 +43,7 @@ impl RemoteConfig {
 pub struct SchedulerConfig {
     // Maximum number of envelopes an actor can process at single scheduled execution
     pub actor_throughput: usize,
+    pub default_mailbox_capacity: usize,
     pub logging_enabled: bool,
     pub metric_reporting_enabled: bool,
     pub metric_reporting_interval: Duration,
@@ -55,6 +56,7 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         SchedulerConfig {
             actor_throughput: 1,
+            default_mailbox_capacity: 16,
             logging_enabled: true,
             metric_reporting_enabled: false,
             metric_reporting_interval: Duration::from_secs(1),
