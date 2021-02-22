@@ -45,7 +45,6 @@ impl AnySender for Local<Envelope> {
     }
 
     fn log(&mut self, message: &str) {
-        // TODO add timestamp, current thread and actor system name
         self.logs.push((self.now(), message.to_string()));
     }
 
@@ -331,9 +330,14 @@ fn event_loop(actions_rx: Receiver<Action>,
     let mut metrics = SchedulerMetrics::named(name.clone());
     let mut start = Instant::now();
     let mut logs = Vec::with_capacity(1024);
+
+    let min_timeout_millis: u64 = 1;
+    let max_timeout_millis: u64 = 256;
+    let mut timeout_millis = max_timeout_millis;
     'main: loop {
-        let received = actions_rx.try_recv();
+        let received = actions_rx.recv_timeout(Duration::from_millis(timeout_millis));
         if let Ok(action) = received {
+            timeout = std::cmp::max(min_timeout_millis, timeout / 2);
             metrics.hit += 1;
             match action {
                 Action::Return { tag, actor, ok } if scheduler.active.contains(&tag) => {
@@ -413,9 +417,8 @@ fn event_loop(actions_rx: Receiver<Action>,
                 }
             }
         } else {
+            timeout_millis = std::cmp::min(timeout_millis * 2, max_timeout_millis);
             metrics.miss += 1;
-            // TODO avoid busy-loop when there are "too much" misses
-            // Consider throttling: actionx_rx.recv_timeout(<variable timeout>)
         }
 
         let now = Instant::now().add(scheduler.config.delay_precision / 2);
