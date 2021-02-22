@@ -234,6 +234,7 @@ struct Client {
     sender: Option<Sender<(String, Vec<u64>)>>,
 }
 
+#[derive(Debug)]
 struct Setup(u32, u64, u64, Vec<String>, Sender<(String, Vec<u64>)>);
 
 impl AnyActor for Client {

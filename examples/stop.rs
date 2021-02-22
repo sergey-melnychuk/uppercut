@@ -8,6 +8,7 @@ use std::any::Any;
 use std::thread::sleep;
 use std::time::Duration;
 
+#[derive(Debug)]
 struct Message(Option<usize>, Sender<usize>);
 
 #[derive(Default)]
@@ -16,9 +17,9 @@ struct State;
 impl AnyActor for State {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(msg) = envelope.message.downcast_ref::<Message>() {
+            sender.log(&format!("received: {:?}", msg));
             let x = msg.0.unwrap();
             msg.1.send(x).unwrap();
-            sender.log(&format!("Actor 'State' received a message: {}", x));
         }
     }
 

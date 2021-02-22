@@ -28,6 +28,7 @@ use crate::pool::ThreadPool;
 
 const ANSWER: usize = 42;
 
+#[derive(Debug)]
 struct Init(Sender<usize>);
 
 struct Test(usize);
@@ -48,8 +49,10 @@ impl AnyActor for Proxy {
     }
 }
 
+#[derive(Debug)]
 struct Counter(usize, Sender<usize>);
 
+#[derive(Debug)]
 enum CounterProtocol {
     Inc,
     Get

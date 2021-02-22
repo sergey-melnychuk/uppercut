@@ -81,7 +81,6 @@ impl Local<Envelope> {
     }
 }
 
-#[derive(Default)]
 struct Local<T: Any + Sized + Send> {
     tag: String,
     sent: HashMap<String, Vec<T>>,
@@ -89,6 +88,19 @@ struct Local<T: Any + Sized + Send> {
     delayed: Vec<Entry>,
     stopped: HashSet<String>,
     logs: Vec<(SystemTime, String)>,
+}
+
+impl<T: Any + Sized + Send> Default for Local<T> {
+    fn default() -> Self {
+        Self {
+            tag: Default::default(),
+            sent: Default::default(),
+            spawns: Default::default(),
+            delayed: Default::default(),
+            stopped: Default::default(),
+            logs: Default::default(),
+        }
+    }
 }
 
 struct Scheduler {
@@ -417,8 +429,7 @@ fn event_loop(actions_rx: Receiver<Action>,
         metrics.ticks += 1;
         if start.elapsed() >= scheduler.config.metric_reporting_interval {
             let now = SystemTime::now();
-            metrics.at = now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
-            metrics.millis = start.elapsed().as_millis() as u64;
+            metrics.at = now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
             metrics.actors = scheduler.active.len() as u64;
 
             // Feature required: configurable metric reporting

@@ -153,8 +153,10 @@ impl Connection {
     }
 }
 
+#[derive(Debug)]
 pub struct StartClient;
 
+#[derive(Debug)]
 struct Loop;
 
 impl AnyActor for Client {

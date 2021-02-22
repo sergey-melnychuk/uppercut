@@ -15,9 +15,13 @@ extern crate log;
 use log::debug;
 
 
+#[derive(Debug)]
 pub struct StartServer;
 
+#[derive(Debug)]
 struct Loop;
+
+#[derive(Debug)]
 struct Connect { socket: Option<TcpStream>, keep_alive: bool }
 
 #[derive(Debug)]

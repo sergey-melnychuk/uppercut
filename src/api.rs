@@ -20,6 +20,7 @@ pub trait AnySender {
     fn delay(&mut self, address: &str, envelope: Envelope, duration: Duration);
     fn stop(&mut self, address: &str);
     fn log(&mut self, message: &str);
+    //fn metric(&mut self, name: &str, value: f32);
     fn now(&self) -> SystemTime;
 }
 
@@ -30,18 +31,8 @@ pub struct Envelope {
     pub to: String,
 }
 
-impl Default for Envelope {
-    fn default() -> Self {
-        Envelope {
-            message: Box::new(()),
-            from: String::default(),
-            to: String::default(),
-        }
-    }
-}
-
 impl Envelope {
-    pub fn of<T: Any + Send>(message: T) -> Envelope {
+    pub fn of<T: Any + Send + Debug>(message: T) -> Envelope {
         Envelope {
             message: Box::new(message),
             from: String::default(),

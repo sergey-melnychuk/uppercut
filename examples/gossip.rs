@@ -274,7 +274,10 @@ struct Countdown {
     tx: Option<Sender<()>>,
 }
 
+#[derive(Debug)]
 struct Setup(usize, Sender<()>);
+
+#[derive(Debug)]
 struct Down(String);
 
 impl Into<Vec<u8>> for Down {

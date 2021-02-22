@@ -20,6 +20,7 @@ struct Master {
     result: Option<Sender<f64>>,
 }
 
+#[derive(Debug)]
 struct Pi {
     workers: usize,
     throws: usize,
@@ -29,7 +30,10 @@ struct Pi {
 #[derive(Default)]
 struct Worker;
 
+#[derive(Debug)]
 struct Task(usize);
+
+#[derive(Debug)]
 struct Done(usize, usize);
 
 impl AnyActor for Master {
