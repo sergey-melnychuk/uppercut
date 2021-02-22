@@ -338,7 +338,7 @@ fn event_loop(actions_rx: Receiver<Action>,
               actions_tx: Sender<Action>,
               events_tx: Sender<Event>,
               mut scheduler: Scheduler,
-              pool_link: impl Fn(Runnable),
+              offload: impl Fn(Runnable),
               name: String,
               host: String) {
     let throughput = scheduler.config.actor_throughput;
@@ -459,13 +459,13 @@ fn event_loop(actions_rx: Receiver<Action>,
             scheduler_metrics.actors = scheduler.active.len() as u64;
 
             if scheduler.config.metric_reporting_enabled {
-                report_metrics(&pool_link, &name, &host,scheduler_metrics.clone(), metrics);
+                report_metrics(&offload, &name, &host,scheduler_metrics.clone(), metrics);
                 scheduler_metrics.reset();
                 metrics = HashMap::with_capacity(1024);
             }
 
             if scheduler.config.logging_enabled {
-                report_logs(&pool_link, &name, &host, logs);
+                report_logs(&offload, &name, &host, logs);
                 logs = Vec::with_capacity(1024);
             }
 
@@ -495,9 +495,9 @@ fn start_actor_runtime(name: String,
         });
     }
 
-    let pool_link = pool.link();
+    let offload = pool.link();
     pool.submit(move || {
-        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, pool_link, name, host);
+        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, offload, name, host);
         for _ in 0..thread_count {
             events_tx.send(Event::Shutdown).unwrap();
         }
@@ -513,10 +513,10 @@ fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'
     }
 }
 
-fn report_logs(pool_link: &impl Fn(Runnable), app: &str, host: &str, logs: Vec<(String, Vec<(SystemTime, String)>)>) {
+fn report_logs(offload: &impl Fn(Runnable), app: &str, host: &str, logs: Vec<(String, Vec<(SystemTime, String)>)>) {
     let app = app.to_string();
     let host = host.to_string();
-    pool_link(Box::new(move || {
+    offload(Box::new(move || {
         for (tag, stm) in logs {
             for (st, msg) in stm {
                 let at = st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
@@ -533,26 +533,27 @@ fn report_logs(pool_link: &impl Fn(Runnable), app: &str, host: &str, logs: Vec<(
     }));
 }
 
-fn report_metrics(pool_link: &impl Fn(Runnable), app: &str, host: &str, scheduler: SchedulerMetrics, metrics: HashMap<String, Vec<(SystemTime, f64)>>) {
-    pool_link(Box::new(move || println!("{:?}", scheduler)));
+fn report_metrics(offload: &impl Fn(Runnable), app: &str, host: &str, scheduler: SchedulerMetrics, metrics: HashMap<String, Vec<(SystemTime, f64)>>) {
+    let app = app.to_string();
+    let host = host.to_string();
 
-    let entries: Vec<MetricEntry> = metrics.into_iter()
-        .flat_map(|(tag, entries)| {
-            entries.into_iter()
-                .map(|(st, val)| {
-                    MetricEntry {
-                        at: st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64,
-                        host: host.to_string(),
-                        app: app.to_string(),
-                        tag: tag.clone(),
-                        val,
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    pool_link(Box::new(move || {
+    offload(Box::new(move || {
+        println!("{:?}", scheduler);
+        let entries: Vec<MetricEntry> = metrics.into_iter()
+            .flat_map(|(tag, entries)| {
+                entries.into_iter()
+                    .map(|(st, val)| {
+                        MetricEntry {
+                            at: st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64,
+                            host: host.clone(),
+                            app: app.clone(),
+                            tag: tag.clone(),
+                            val,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
         entries.into_iter().for_each(|e| println!("{:?}", e));
     }))
 }
