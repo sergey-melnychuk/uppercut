@@ -98,48 +98,52 @@ configuration remains, thus can be restarted any required number of attempts.
    - graceful (wait for all tasks to complete)
      - impossible in general case, Actor Model is non-deterministic
      - **a graceful shutdown is application-specific**
-1. Shutdown an Actor under specific Address
-     - send a message asking the Actor to stop
-     - ask Scheduler to mark Address as free/unoccupied
+1. Stop an Actor under specific Address
+   - `sender.stop("addr")`
+   - only local (not remote) actors can be stopped like this (as for now)
+   - actor can request to stop itself using the same approach
 1. Basic metrics reporting:
    - Default behaviour: dump metrics to stdout with configurable interval
-
-#### TODO
-1. Actor failure handling
-   - `std::panic::catch_unwind` ([doc](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html)) + `AssertUnwindSafe` ([doc](https://doc.rust-lang.org/std/panic/struct.AssertUnwindSafe.html)) 
-   - if recoverable - recovery to stable state (simply ignore and carry on)
-     - recoverable == can carry on performing the task
-     - occurred in 100% owned code (not library, not RPC nor 3rd party)
-     - does not depend on external resources (file/socket descriptors, etc)
-     - such failure must be part of the application domain
-     - e.g. failed to parse JSON from given string
-   - if non-recoverable - propagate
-     - non-recoverable == can't make any more progress due to the failure
-     - e.g. failed to bind a listener to specific port number
-     - propagate where? the "parent"/"supervisor" concept is missing!
-1. Persistence:
-   - Message queue that can be persisted to disk
-   - Allows introduction of reliability guarantees
-   - Backend: configurable? (leveldb, etc)
-   - General persistent KV-store? (fault-tolerance)
-     - then envelopes persistence is just a specific use of such general store
+1. Actor failure handling:
+   - `std::panic::catch_unwind` ([doc](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html))
+   - `AssertUnwindSafe` ([doc](https://doc.rust-lang.org/std/panic/struct.AssertUnwindSafe.html))
+   - The `on_fail` method of `AnyActor` is fired when actor failure is detected
+     - Providing custom impl of `on_fail` allows signaling/propagation of the error (if needed)
+     - Generally it is hard to distinguish recoverable and non-recoverable failures
+       - What is not part of a domain seems like non-recoverable failure
+     - Supervision concept thus moves to application domain and client code is responsible for implementing it
+   - see [fail](/examples/fail.rs) example for more details
+1. Actor stop watch:
+   - The `on_stop` method of `AnyActor` is called right before an actor is permanently stopped
+   - This is the place where to clean up any existing resources and signal stopped processing
+   - see [stop](/examples/stop.rs) example for more details
 1. Raw Actors:
    - Message is just a byte buffer
      - serialize and send byte buffer
      - receive byte buffer and try deserialize
-   - Such Raw Actor can be used as connection handler in mio-based event loop
-     - yet incoming message can be checked if it is `&[u8]`
-     - so no strict distinction between Raw Actor and just Actor
-   - (de)serialization
-     - `fn(&[u8]) -> Option<T>`
-     - `fn(T) -> Vec<u8>` 
-     - or `fn(T, &mut [u8]) -> Result<usize>` (potentially no allocation)
-     - [bincode](https://github.com/servo/bincode) 
-1. Logging/Metrics aggregation:
-   - Configurable and scalable log aggregation must be provided
-   - Allow reporting metrics to Graphite/Prometheus
-   - Allow reporting metrics to logstash/etc
-1. Insights into Environment internals
+   - de-/serialization
+     - no restrictions on specific impl
+     - [bincode](https://github.com/servo/bincode)
+1. Centralized unified Logging & Metrics:
+   - Simple structured Metrics and Logging model provided
+   - Logs from actors are collected and dumped to stdout (if enabled) in the event loop
+   - Scheduler metrics are collected and dumped to stdout (if enabled) in the event loop
+   - Custom metrics: TBD similar as Logging
+1. Example implementations:
+   - PAXOS (distributed consensus - simple log replication)
+   - Gossip (heartbeat gossip distributed membership and failure detection)
+   - TODO Distributed Hash-Table (consistent hashing, chord, etc)
+   - TODO Distributed Message Queue (routing, to keep in mind: persistence)
+
+#### TODO
+1. Test-kit:
+   - Allow probing for specific messages at specific Address
+   - Allow accessing Actor's internal state (for tests only)
+1. Persistence:
+   - Message queue that can be persisted to disk
+   - Allows introduction of reliability guarantees
+   - Configurable backend (leveldb/rocksdb/etc)
+1. Insights into Environment internals (Admin Panel)
    - Extend existing metric collection approach
    - Allow narrowing down tracing to specific Address
      - get sent/received/processed rate
@@ -149,20 +153,9 @@ configuration remains, thus can be restarted any required number of attempts.
      - minimize tracing overhead for the whole system
      - Actor can be easily migrated between thread-pools
    - Dashboard representing current state of the Environment?
-     - Standalone web-page?
+     - standalone web-page?
      - Grafana dashboard?
    - [questdb](https://questdb.io/)
-1. Test-kit:
-   - Allow probing for specific messages at specific Address
-   - Allow accessing Actor's internal state (for tests only)
-1. Define beneficial use-cases and provide example implementations
-   - distributed hash-table
-   - distributed lock service
-     - PAXOS and friends
-   - large-scale stream processing
-     - persistence?
-     - idempotence?
-     - fault-tolerance? (e.g. spark-style checkpoints)
 
 #### References
 
