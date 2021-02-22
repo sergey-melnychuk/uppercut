@@ -11,9 +11,6 @@ use crate::api::{AnyActor, AnySender, Envelope};
 use bytes::{Bytes, Buf};
 use std::net::SocketAddr;
 
-extern crate log;
-use log::debug;
-
 
 #[derive(Debug)]
 pub struct StartServer;
@@ -179,7 +176,6 @@ impl AnyActor for Connection {
                 );
 
                 if len >= 3 * 4 + 2 + to_len + from_len + vec_len {
-                    //debug!("inside len check: buf.len()={}", self.recv_buf.len());
                     let _ = self.recv_buf.get(14);
 
                     // TODO address error handling
@@ -193,7 +189,7 @@ impl AnyActor for Connection {
                     host.set_port(response_port);
                     let from = format!("{}@{}", from, host);
 
-                    debug!("server/rcvd: to={} from={} vec={:?}", to, from, vec);
+                    sender.log(&format!("server/rcvd: to={} from={} vec={:?}", to, from, vec));
                     let e = Envelope::of(vec).to(&to).from(&from);
                     sender.send(&to, e);
                 }

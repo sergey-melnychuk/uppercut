@@ -13,11 +13,6 @@ use bytes::{BytesMut, BufMut};
 
 use crate::api::{AnyActor, AnySender, Envelope};
 
-extern crate log;
-use log::debug;
-
-
-// TODO make poll timeout, buffer sizes, pooling, etc configurable by introducing ClientConfig
 
 pub struct Client {
     poll: Poll,
@@ -184,7 +179,7 @@ impl AnyActor for Client {
                 buf.put(from.as_bytes());
                 buf.put(vec.as_ref());
 
-                debug!("client/sent: to={}[@{}] from={} vec={:?}", to, host, from, vec);
+                sender.log(&format!("client/sent: to={}[@{}] from={} vec={:?}", to, host, from, vec));
                 self.put(&host, buf.as_ref());
             }
 

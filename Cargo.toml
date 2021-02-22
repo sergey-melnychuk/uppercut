@@ -20,7 +20,6 @@ core_affinity = "0.5.10"
 crossbeam-channel = "0.4.4"
 parsed = "0.1.4"
 bytes = "0.6.0"
-log = "0.4"
 get_if_addrs = "0.5"
 
 [dependencies.mio]
@@ -33,6 +32,7 @@ num_cpus = "1.13.0"
 clap = "2.33.1"
 rand = "0.7.3"
 chrono = "0.4.19"
+log = "0.4"
 env_logger = "0.8.2"
 
 [[bench]]

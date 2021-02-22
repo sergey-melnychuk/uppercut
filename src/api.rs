@@ -20,7 +20,7 @@ pub trait AnySender {
     fn delay(&mut self, address: &str, envelope: Envelope, duration: Duration);
     fn stop(&mut self, address: &str);
     fn log(&mut self, message: &str);
-    //fn metric(&mut self, name: &str, value: f32);
+    fn metric(&mut self, name: &str, value: f64);
     fn now(&self) -> SystemTime;
 }
 
