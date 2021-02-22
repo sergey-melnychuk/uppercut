@@ -35,6 +35,7 @@ fn counter(b: &mut Bencher) {
         tx: Option<Sender<usize>>,
     }
 
+    #[derive(Debug)]
     enum Protocol {
         Init(usize, Sender<usize>),
         Hit,
@@ -82,6 +83,7 @@ fn counter(b: &mut Bencher) {
 fn chain(b: &mut Bencher) {
     const LENGTH: usize = 1000;
 
+    #[derive(Debug)]
     struct Hit(Sender<usize>, usize);
 
     #[derive(Default)]
