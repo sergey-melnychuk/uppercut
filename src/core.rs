@@ -444,7 +444,7 @@ fn event_loop(actions_rx: Receiver<Action>,
             scheduler_metrics.miss += 1;
         }
 
-        let now = Instant::now().add(scheduler.config.delay_precision / 2);
+        let now = Instant::now().add(scheduler.config.delay_precision);
         while scheduler.tasks.peek().map(|e| e.at <= now).unwrap_or_default() {
             if let Some(Entry { tag, envelope, .. }) = scheduler.tasks.pop() {
                 let action = Action::Queue { tag, queue: vec![envelope] };
