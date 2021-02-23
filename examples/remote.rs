@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use uppercut::pool::ThreadPool;
-use uppercut::config::{Config, RemoteConfig, SchedulerConfig};
+use uppercut::config::{Config, RemoteConfig, ServerConfig, ClientConfig, SchedulerConfig};
 use uppercut::core::System;
 use uppercut::api::{Envelope, AnyActor, AnySender};
 
@@ -33,7 +33,9 @@ fn main() {
 
     let cfg1 = Config::new(
         SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("0.0.0.0:10001"));
+        RemoteConfig::listening_at("0.0.0.0:10001",
+                                   ServerConfig::default(),
+                                   ClientConfig::default()));
     let sys1 = System::new("one", "localhost", &cfg1);
     let run1 = sys1.run(&pool).unwrap();
 
@@ -43,7 +45,9 @@ fn main() {
 
     let cfg2 = Config::new(
         SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("0.0.0.0:10002"));
+        RemoteConfig::listening_at("0.0.0.0:10002",
+                                   ServerConfig::default(),
+                                   ClientConfig::default()));
     let sys2 = System::new("two", "localhost", &cfg2);
     let run2 = sys2.run(&pool).unwrap();
 

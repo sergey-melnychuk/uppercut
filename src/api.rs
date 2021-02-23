@@ -2,11 +2,11 @@ use std::any::Any;
 use std::time::{Duration, SystemTime};
 use std::fmt::Debug;
 
-pub type Actor = Box<dyn AnyActor + Send>;
+pub type Actor = Box<dyn AnyActor>;
 
 pub type Message = Box<dyn Any + Send>;
 
-pub trait AnyActor {
+pub trait AnyActor: Send {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender);
     fn on_fail(&self, _error: Box<dyn Any + Send>, _sender: &mut dyn AnySender) {}
     fn on_stop(&self, _sender: &mut dyn AnySender) {}

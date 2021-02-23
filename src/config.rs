@@ -15,26 +15,55 @@ impl Config {
     }
 }
 
-#[derive(Clone)]
-pub struct RemoteConfig {
-    pub enabled: bool,
-    pub listening: String,
+#[derive(Debug, Clone)]
+pub struct ServerConfig {
+    pub events_capacity: usize,
+    pub recv_buffer_size: usize,
+    pub send_buffer_size: usize,
 }
 
-impl Default for RemoteConfig {
+impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
-            listening: Default::default(),
+            events_capacity: 1024,
+            recv_buffer_size: 1024,
+            send_buffer_size: 1024,
         }
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ClientConfig {
+    pub events_capacity: usize,
+    pub recv_buffer_size: usize,
+    pub send_buffer_size: usize,
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        Self {
+            events_capacity: 1024,
+            recv_buffer_size: 1024,
+            send_buffer_size: 1024,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct RemoteConfig {
+    pub enabled: bool,
+    pub listening: String,
+    pub server: ServerConfig,
+    pub client: ClientConfig,
+}
+
 impl RemoteConfig {
-    pub fn listening_at(listening: &str) -> Self {
+    pub fn listening_at(listening: &str, server: ServerConfig, client: ClientConfig) -> Self {
         Self {
             enabled: true,
             listening: listening.to_string(),
+            server,
+            client,
         }
     }
 }

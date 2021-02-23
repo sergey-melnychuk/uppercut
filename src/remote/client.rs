@@ -2,19 +2,20 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::io::{Read, Write, ErrorKind};
 use std::time::Duration;
+use std::collections::HashMap;
 
 use mio::{Poll, Events, Token, Interest};
 use mio::net::TcpStream;
 
 use parsed::stream::ByteStream;
-use std::collections::HashMap;
-
 use bytes::{BytesMut, BufMut};
 
 use crate::api::{AnyActor, AnySender, Envelope};
+use crate::config::ClientConfig;
 
 
 pub struct Client {
+    config: ClientConfig,
     poll: Poll,
     events: Events,
     counter: usize,
@@ -24,11 +25,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(response_port: u16) -> Self {
+    pub fn new(response_port: u16, config: &ClientConfig) -> Self {
         let poll = Poll::new().unwrap();
-        let events = Events::with_capacity(1024);
+        let events = Events::with_capacity(config.events_capacity);
 
         Client {
+            config: config.clone(),
             poll,
             events,
             counter: 0,
@@ -46,7 +48,7 @@ impl Client {
         let id = self.counter;
         self.poll.registry().register(&mut socket, Token(id), Interest::WRITABLE).unwrap();
 
-        let connection = Connection::connected(addr.to_string(), socket, 1024);
+        let connection = Connection::connected(addr.to_string(), socket, self.config.clone());
         self.connections.insert(id, connection);
         self.destinations.insert(addr.to_string(), id);
         Ok(id)
@@ -105,13 +107,13 @@ struct Connection {
 }
 
 impl Connection {
-    fn connected(target: String, socket: TcpStream, buffer_size: usize) -> Self {
+    fn connected(target: String, socket: TcpStream, config: ClientConfig) -> Self {
         Self {
             target,
             socket: Some(socket),
             is_open: true,
-            recv_buf: ByteStream::with_capacity(buffer_size),
-            send_buf: ByteStream::with_capacity(buffer_size),
+            recv_buf: ByteStream::with_capacity(config.recv_buffer_size),
+            send_buf: ByteStream::with_capacity(config.send_buffer_size),
             buffer: [0u8; 1024],
         }
     }

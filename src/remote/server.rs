@@ -1,15 +1,16 @@
 use std::error::Error;
 use std::io::{Read, Write};
 use std::time::Duration;
+use std::net::SocketAddr;
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Token};
 
+use bytes::{Bytes, Buf};
 use parsed::stream::ByteStream;
 
 use crate::api::{AnyActor, AnySender, Envelope};
-use bytes::{Bytes, Buf};
-use std::net::SocketAddr;
+use crate::config::ServerConfig;
 
 
 #[derive(Debug)]
@@ -19,12 +20,20 @@ pub struct StartServer;
 struct Loop;
 
 #[derive(Debug)]
-struct Connect { socket: Option<TcpStream>, keep_alive: bool }
+struct Connect {
+    socket: Option<TcpStream>,
+    keep_alive: bool,
+    config: ServerConfig,
+}
 
 #[derive(Debug)]
-struct Work { is_readable: bool, is_writable: bool }
+struct Work {
+    is_readable: bool,
+    is_writable: bool,
+}
 
 pub struct Server {
+    config: ServerConfig,
     poll: Poll,
     events: Events,
     socket: TcpListener,
@@ -32,18 +41,17 @@ pub struct Server {
     port: u16,
 }
 
-// TODO make buffer sizes configurable, introduce ServerConfig under RemoteConfig
-
 impl Server {
-    pub fn listen(addr: &str) -> Result<Server, Box<dyn Error>> {
+    pub fn listen(addr: &str, config: &ServerConfig) -> Result<Server, Box<dyn Error>> {
         let poll = Poll::new().unwrap();
-        let events = Events::with_capacity(1024);
+        let events = Events::with_capacity(config.events_capacity);
         let addr = addr.parse::<SocketAddr>()?;
         let port = addr.port();
         let mut socket = TcpListener::bind(addr)?;
         poll.registry().register(&mut socket, Token(0), Interest::READABLE).unwrap();
 
         let listener = Server {
+            config: config.clone(),
             poll,
             events,
             socket,
@@ -74,7 +82,7 @@ impl AnyActor for Server {
                                 .unwrap();
                             let tag = format!("{}", self.counter);
                             sender.spawn(&tag, || Box::new(Connection::default()));
-                            let connect = Connect { socket: Some(socket), keep_alive: true };
+                            let connect = Connect { socket: Some(socket), keep_alive: true, config: self.config.clone() };
                             sender.send(&tag, Envelope::of(connect));
                         }
                     },
@@ -126,8 +134,8 @@ impl Default for Connection {
             socket: None,
             is_open: true,
             keep_alive: true,
-            recv_buf: ByteStream::with_capacity(1024),
-            send_buf: ByteStream::with_capacity(1024),
+            recv_buf: ByteStream::with_capacity(0),
+            send_buf: ByteStream::with_capacity(0),
             can_read: false,
             can_write: false,
             buffer: [0 as u8; 1024],
@@ -140,9 +148,8 @@ impl AnyActor for Connection {
         if let Some(connect) = envelope.message.downcast_mut::<Connect>() {
             self.socket = connect.socket.take();
             self.keep_alive = connect.keep_alive;
-        } else if self.socket.is_none() {
-            let me = sender.myself();
-            sender.send(&me, envelope);
+            self.recv_buf = ByteStream::with_capacity(connect.config.recv_buffer_size);
+            self.send_buf = ByteStream::with_capacity(connect.config.send_buffer_size);
         } else if let Some(work) = envelope.message.downcast_ref::<Work>() {
             self.can_read = work.is_readable;
             self.can_write = self.can_write || work.is_writable;
