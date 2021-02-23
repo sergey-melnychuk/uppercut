@@ -132,6 +132,8 @@ configuration remains, thus can be restarted any required number of attempts.
 1. Example implementations:
    - [PAXOS](/examples/paxos.rs) (distributed consensus - simple log replication)
    - [Gossip](/examples/gossip.rs) (heartbeat gossip distributed membership and failure detection)
+   - TODO Distributed Lock
+   - TODO Raft (leader election)
    - TODO Distributed Hash-Table (consistent hashing, chord, etc)
    - TODO Distributed Message Queue (routing, to keep in mind: persistence)
 
