@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use uppercut::pool::ThreadPool;
-use uppercut::config::{Config, RemoteConfig, SchedulerConfig};
+use uppercut::config::{Config, RemoteConfig, ServerConfig, ClientConfig, SchedulerConfig};
 use uppercut::core::System;
 use uppercut::api::{Envelope, AnyActor, AnySender};
 
@@ -12,7 +12,7 @@ impl AnyActor for PingPong {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(vec) = envelope.message.downcast_ref::<Vec<u8>>() {
             let msg = String::from_utf8(vec.clone()).unwrap();
-            println!("PingPong: actor '{}' received '{}'\n", sender.me(), msg);
+            sender.log(&format!("received '{}'", msg));
 
             let response = if vec == b"ping" {
                 Envelope::of(b"pong".to_vec()).from(sender.me())
@@ -33,8 +33,10 @@ fn main() {
 
     let cfg1 = Config::new(
         SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("0.0.0.0:10001"));
-    let sys1 = System::new("one", &cfg1);
+        RemoteConfig::listening_at("0.0.0.0:10001",
+                                   ServerConfig::default(),
+                                   ClientConfig::default()));
+    let sys1 = System::new("one", "localhost", &cfg1);
     let run1 = sys1.run(&pool).unwrap();
 
     run1.spawn_default::<PingPong>("ping");
@@ -43,8 +45,10 @@ fn main() {
 
     let cfg2 = Config::new(
         SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("0.0.0.0:10002"));
-    let sys2 = System::new("two", &cfg2);
+        RemoteConfig::listening_at("0.0.0.0:10002",
+                                   ServerConfig::default(),
+                                   ClientConfig::default()));
+    let sys2 = System::new("two", "localhost", &cfg2);
     let run2 = sys2.run(&pool).unwrap();
 
     run2.spawn_default::<PingPong>("pong");

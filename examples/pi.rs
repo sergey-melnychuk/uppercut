@@ -20,6 +20,7 @@ struct Master {
     result: Option<Sender<f64>>,
 }
 
+#[derive(Debug)]
 struct Pi {
     workers: usize,
     throws: usize,
@@ -29,7 +30,10 @@ struct Pi {
 #[derive(Default)]
 struct Worker;
 
+#[derive(Debug)]
 struct Task(usize);
+
+#[derive(Debug)]
 struct Done(usize, usize);
 
 impl AnyActor for Master {
@@ -82,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 worker thread
 
     let cfg = Config::default();
-    let sys = System::new("pi", &cfg);
+    let sys = System::new("pi", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
 
     let now = Instant::now();

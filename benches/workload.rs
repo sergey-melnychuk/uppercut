@@ -13,8 +13,8 @@ mod api;
 #[path = "../src/config.rs"]
 mod config;
 
-#[path = "../src/metrics.rs"]
-mod metrics;
+#[path = "../src/monitor.rs"]
+mod monitor;
 
 #[path = "../src/remote/mod.rs"]
 mod remote;
@@ -35,6 +35,7 @@ fn counter(b: &mut Bencher) {
         tx: Option<Sender<usize>>,
     }
 
+    #[derive(Debug)]
     enum Protocol {
         Init(usize, Sender<usize>),
         Hit,
@@ -66,7 +67,7 @@ fn counter(b: &mut Bencher) {
     let cfg = Config::default();
     let pool: ThreadPool = ThreadPool::for_config(&cfg);
     b.iter(|| {
-        let sys = System::new("bench", &cfg);
+        let sys = System::new("bench", "localhost", &cfg);
         let run = sys.run(&pool).unwrap();
 
         let (tx, rx) = channel();
@@ -82,6 +83,7 @@ fn counter(b: &mut Bencher) {
 fn chain(b: &mut Bencher) {
     const LENGTH: usize = 1000;
 
+    #[derive(Debug)]
     struct Hit(Sender<usize>, usize);
 
     #[derive(Default)]
@@ -107,7 +109,7 @@ fn chain(b: &mut Bencher) {
     let cfg = Config::default();
     let pool: ThreadPool = ThreadPool::for_config(&cfg);
     b.iter(|| {
-        let sys = System::new("bench", &cfg);
+        let sys = System::new("bench", "localhost", &cfg);
         let run = sys.run(&pool).unwrap();
 
         let (tx, rx) = channel();

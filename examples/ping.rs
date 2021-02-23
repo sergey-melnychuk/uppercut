@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use uppercut::pool::ThreadPool;
-use uppercut::config::{Config, RemoteConfig, SchedulerConfig};
+use uppercut::config::{Config, RemoteConfig, ClientConfig, ServerConfig, SchedulerConfig};
 use uppercut::core::System;
 use uppercut::api::{Envelope, AnyActor, AnySender};
 
@@ -50,8 +50,8 @@ fn main() {
 
     let cfg = Config::new(
         SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at(listen));
-    let sys = System::new("one", &cfg);
+        RemoteConfig::listening_at(listen, ServerConfig::default(), ClientConfig::default()));
+    let sys = System::new("one", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
 
     run.spawn_default::<PingPong>("ping");

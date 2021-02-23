@@ -2,14 +2,14 @@ use std::sync::mpsc::{channel, Sender};
 
 extern crate uppercut;
 use uppercut::api::{AnyActor, Envelope, AnySender};
-use uppercut::config::Config;
 use uppercut::core::System;
 use uppercut::pool::ThreadPool;
+use std::any::Any;
 use std::thread::sleep;
 use std::time::Duration;
 
 #[derive(Debug)]
-struct Message(usize, Sender<usize>);
+struct Message(Option<usize>, Sender<usize>);
 
 #[derive(Default)]
 struct State;
@@ -18,24 +18,32 @@ impl AnyActor for State {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(msg) = envelope.message.downcast_ref::<Message>() {
             sender.log(&format!("received: {:?}", msg));
-            msg.1.send(msg.0).unwrap();
+            let x = msg.0.unwrap();
+            msg.1.send(x).unwrap();
         }
+    }
+
+    fn on_fail(&self, _error: Box<dyn Any + Send>, sender: &mut dyn AnySender) {
+        sender.log("failure detected!");
+    }
+
+    fn on_stop(&self, sender: &mut dyn AnySender) {
+        sender.log("shutting down");
     }
 }
 
 fn main() {
-    let cfg = Config::default();
-    let sys = System::new("basic", "localhost", &cfg);
+    let sys = System::default();
     let pool = ThreadPool::new(6);
     let run = sys.run(&pool).unwrap();
-
-    run.spawn_default::<State>("state");
+    run.spawn_default::<State>("x");
 
     let (tx, rx) = channel();
-    run.send("state", Envelope::of(Message(42, tx)));
+    run.send("x", Envelope::of(Message(Some(42), tx.clone())));
+    run.send("x", Envelope::of(Message(None, tx.clone())));
+    run.send("x", Envelope::of(Message(Some(100500), tx.clone())));
 
+    println!("recv: {}", rx.recv().unwrap());
     sleep(Duration::from_secs(3));
-    let result = rx.recv().unwrap();
-    println!("result: {}", result);
     run.shutdown();
 }

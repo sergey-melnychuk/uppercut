@@ -21,15 +21,17 @@ impl Round {
     }
 }
 
+#[derive(Debug)]
 struct Hit(usize);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Acc {
     name: String,
     zero: usize,
     hits: usize,
 }
 
+#[derive(Debug)]
 enum Fan {
     Trigger { size: usize },
     Out { id: usize },
@@ -54,7 +56,7 @@ impl AnyActor for Root {
                     if self.count == self.size {
                         self.seen.clear();
                         self.count = 0;
-                        println!("root completed the fanout of size: {} (epoch: {})", self.size, self.epoch);
+                        sender.log(&format!("root completed the fanout of size: {} (epoch: {})", self.size, self.epoch));
                         let trigger = Fan::Trigger { size: self.size };
                         let env = Envelope::of(trigger).from(sender.me());
                         sender.send(&sender.myself(), env);
@@ -92,7 +94,7 @@ impl AnyActor for Round {
             let env = Envelope::of(Fan::In { id: *id }).from(sender.me());
             sender.send(&envelope.from, env);
         } else {
-            println!("unexpected message: {:?}", envelope.message.type_id());
+            sender.log(&format!("unexpected message: {:?}", envelope.message.type_id()));
         }
     }
 }
@@ -101,6 +103,18 @@ struct Periodic {
     at: Instant,
     timings: HashMap<usize, usize>,
     counter: usize,
+}
+
+impl Periodic {
+    fn report(&self) -> (usize, usize, usize, usize) {
+        let mut ds = self.timings.keys().collect::<Vec<&usize>>();
+        ds.sort();
+        let min = *ds[0];
+        let max = *ds[ds.len()-1];
+        let p50 = *ds[(ds.len()-1) / 2];
+        let p99 = *ds[(ds.len()-1) * 99 / 100];
+        (min, max, p50, p99)
+    }
 }
 
 impl Default for Periodic {
@@ -113,6 +127,7 @@ impl Default for Periodic {
     }
 }
 
+#[derive(Debug)]
 struct Tick {
     at: Instant,
 }
@@ -129,16 +144,8 @@ impl AnyActor for Periodic {
             }
             self.counter += 1;
             if self.counter % 1000 == 0 {
-                let total: usize = self.timings.values().sum();
-                let mut ds = self.timings.keys().collect::<Vec<&usize>>();
-                let mut sum: usize = 0;
-                ds.sort();
-                println!("timer latencies:");
-                for d in ds {
-                    let n = self.timings.get(d).unwrap();
-                    sum += *n;
-                    println!("\t{} ms\t: {}\t{}/{}", *d, *n, sum, total);
-                }
+                let (min, max, p50, p99) = self.report();
+                sender.log(&format!("min={} p50={} p99={} max={}", min, p50, p99, max));
                 self.timings.clear();
             }
             let env = Envelope::of(Tick { at: Instant::now() }).from(sender.me());
@@ -157,7 +164,7 @@ impl AnyActor for PingPong {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(s) = envelope.message.downcast_ref::<String>() {
             if self.count % 1000 == 0 {
-                println!("Actor '{}' (count={}) received message '{}'", sender.myself(), self.count, s);
+                sender.log(&format!("Actor '{}' (count={}) received message '{}'", sender.myself(), self.count, s));
             }
             self.count += 1;
             if s == "ping" {
@@ -178,7 +185,7 @@ fn main() {
     let mut scheduler_config = SchedulerConfig::with_total_threads(cores);
     scheduler_config.metric_reporting_enabled = true;
     let cfg = Config::new(scheduler_config, RemoteConfig::default());
-    let sys = System::new("full", &cfg);
+    let sys = System::new("full", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
 
     const SIZE: usize = 100_000;
