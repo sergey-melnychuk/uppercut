@@ -98,9 +98,10 @@ impl Default for SchedulerConfig {
 
 impl SchedulerConfig {
     pub fn with_total_threads(total_threads: usize) -> Self {
-        let mut config = SchedulerConfig::default();
-        config.actor_worker_threads = total_threads;
-        config
+        SchedulerConfig {
+            actor_worker_threads: total_threads,
+            ..Default::default()
+        }
     }
 
     pub(crate) fn total_threads_required(&self) -> usize {

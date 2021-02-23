@@ -51,7 +51,7 @@ impl AnySender for Local<Envelope> {
     fn metric(&mut self, name: &str, value: f64) {
         let now = self.now();
         self.metrics.entry(name.to_string())
-            .or_insert(Vec::default())
+            .or_insert_with(Vec::default)
             .push((now, value));
     }
 
@@ -288,7 +288,7 @@ impl<'a> Run<'a> {
 
     pub fn shutdown(self) {
         let action = Action::Shutdown;
-        self.sender.send(action).unwrap();
+        let _ = self.sender.send(action);
     }
 
     pub fn submit<F: FnOnce() + Send + 'static>(&self, f: F) {
@@ -430,11 +430,11 @@ fn event_loop(actions_rx: Receiver<Action>,
                 Action::Metrics { map } => {
                     for (name, mut entries) in map {
                         metrics.entry(name)
-                            .or_insert(Vec::default())
+                            .or_insert_with(Vec::default)
                             .append(&mut entries);
                     }
                 },
-                Action::Shutdown => break,
+                Action::Shutdown => break 'main,
                 _ => {
                     scheduler_metrics.drops += 1;
                 }
@@ -470,6 +470,11 @@ fn event_loop(actions_rx: Receiver<Action>,
             }
 
             start = Instant::now();
+        }
+
+        if scheduler.active.is_empty() {
+            // Shutdown if all actors have stopped.
+            break 'main;
         }
     }
 }

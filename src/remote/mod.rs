@@ -11,6 +11,6 @@ pub fn host() -> String {
         .into_iter()
         .find(|i| !i.is_loopback())
         .map(|i| i.addr.ip())
-        .unwrap_or(IpAddr::from([127, 0, 0, 1]));
+        .unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
     ip.to_string()
 }

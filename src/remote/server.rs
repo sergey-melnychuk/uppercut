@@ -138,7 +138,7 @@ impl Default for Connection {
             send_buf: ByteStream::with_capacity(0),
             can_read: false,
             can_write: false,
-            buffer: [0 as u8; 1024],
+            buffer: [0u8; 1024],
         }
     }
 }
