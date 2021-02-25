@@ -175,7 +175,6 @@ impl AnyActor for Client {
             } else {
                 sender.log(&format!("Failed to send: to={}[@{}] from={} bytes={}",
                                     to, host, from, payload.len()));
-                // TODO Introduce some generic way to report that packet was dropped (not sent)
             }
 
         } else if envelope.message.downcast_ref::<StartClient>().is_some() {
