@@ -8,10 +8,10 @@ use mio::{Poll, Events, Token, Interest};
 use mio::net::TcpStream;
 
 use parsed::stream::ByteStream;
-use bytes::{BytesMut, BufMut};
 
 use crate::api::{AnyActor, AnySender, Envelope};
 use crate::config::ClientConfig;
+use crate::remote::packet::Packet;
 
 
 pub struct Client {
@@ -60,6 +60,7 @@ impl Client {
         for event in &self.events {
             let id = event.token().0;
 
+            // TODO Consider extracting IO to worker/connection actors (server approach)
             let mut connection = self.connections.remove(&id).unwrap();
 
             if event.is_readable() {
@@ -103,7 +104,6 @@ struct Connection {
     is_open: bool,
     recv_buf: ByteStream,
     send_buf: ByteStream,
-    buffer: [u8; 1024],
 }
 
 impl Connection {
@@ -114,7 +114,6 @@ impl Connection {
             is_open: true,
             recv_buf: ByteStream::with_capacity(config.recv_buffer_size),
             send_buf: ByteStream::with_capacity(config.send_buffer_size),
-            buffer: [0u8; 1024],
         }
     }
 }
@@ -133,10 +132,11 @@ impl Connection {
 
     fn recv(&mut self) -> usize {
         let mut bytes_received: usize = 0;
-        while self.recv_buf.cap() >= self.buffer.len() {
-            match self.socket.as_ref().unwrap().read(&mut self.buffer) {
+        let mut buffer = [0u8; 1024];
+        while self.recv_buf.cap() >= buffer.len() {
+            match self.socket.as_ref().unwrap().read(&mut buffer) {
                 Ok(n) if n > 0 => {
-                    self.recv_buf.put(&self.buffer[0..n]);
+                    self.recv_buf.put(&buffer[0..n]);
                     bytes_received += n;
                 },
                 Err(e) if e.kind() == ErrorKind::WouldBlock => break,
@@ -162,27 +162,19 @@ impl AnyActor for Client {
             self.poll(Duration::from_millis(1));
             let me = sender.myself();
             sender.send(&me, envelope);
-        } else if let Some(vec) = envelope.message.downcast_ref::<Vec<u8>>() {
-
-            // TODO extract preparation of payload for sending into the socket
+        } else if let Some(payload) = envelope.message.downcast_ref::<Vec<u8>>() {
             let (to, host) = split_address(envelope.to);
             let from = envelope.from.to_owned();
+
             let ok = self.has(&host) || self.connect(&host).is_ok();
-
             if ok {
-                // TODO extract binary serialization logic
-                let cap: usize = 3 * 4 + 2 + vec.len() + to.len() + from.len();
-                let mut buf = BytesMut::with_capacity(cap);
-                buf.put_u32(to.len() as u32);
-                buf.put_u32(from.len() as u32);
-                buf.put_u32(vec.len() as u32);
-                buf.put_u16(self.response_port);
-                buf.put(to.as_bytes());
-                buf.put(from.as_bytes());
-                buf.put(vec.as_ref());
-
-                sender.log(&format!("client/sent: to={}[@{}] from={} vec={:?}", to, host, from, vec));
-                self.put(&host, buf.as_ref());
+                let packet = Packet::new(to, from, payload.to_vec(), self.response_port);
+                self.put(&host, packet.to_bytes().as_ref());
+                sender.log(&format!("sent: to={}[@{}] from={} bytes={}",
+                                    packet.to, host, packet.from, payload.len()));
+            } else {
+                sender.log(&format!("Failed to send: to={}[@{}] from={} bytes={}",
+                                    to, host, from, payload.len()));
             }
 
         } else if envelope.message.downcast_ref::<StartClient>().is_some() {
