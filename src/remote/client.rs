@@ -60,7 +60,7 @@ impl Client {
         for event in &self.events {
             let id = event.token().0;
 
-            // TODO Extract IO to worker actors (like in server)
+            // TODO Consider extracting IO to worker/connection actors (server approach)
             let mut connection = self.connections.remove(&id).unwrap();
 
             if event.is_readable() {
