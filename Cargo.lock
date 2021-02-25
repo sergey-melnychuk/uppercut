@@ -300,9 +300,9 @@ dependencies = [
 
 [[package]]
 name = "parsed"
-version = "0.1.4"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccc4275bc6403e5e69fe12f3ba9e8670bc0945067c3b3f1acf16388e8457c746"
+checksum = "c3c814504f59297a00ee83ef9d64f5ca0da813fdf4e08f8f67aa19f0ffe345d4"
 
 [[package]]
 name = "ppv-lite86"

@@ -6,11 +6,11 @@ use std::net::SocketAddr;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Token};
 
-use bytes::{Bytes, Buf};
 use parsed::stream::ByteStream;
 
 use crate::api::{AnyActor, AnySender, Envelope};
 use crate::config::ServerConfig;
+use crate::remote::packet::Packet;
 
 
 #[derive(Debug)]
@@ -80,14 +80,14 @@ impl AnyActor for Server {
                                 .register(&mut socket, token,
                                           Interest::READABLE | Interest::WRITABLE)
                                 .unwrap();
-                            let tag = format!("{}", self.counter);
+                            let tag = format!("server-connection-{}", self.counter);
                             sender.spawn(&tag, || Box::new(Connection::default()));
                             let connect = Connect { socket: Some(socket), keep_alive: true, config: self.config.clone() };
                             sender.send(&tag, Envelope::of(connect));
                         }
                     },
                     token => {
-                        let tag = format!("{}", token.0);
+                        let tag = format!("server-connection-{}", token.0);
                         let work = Work { is_readable: event.is_readable(), is_writable: event.is_writable() };
                         sender.send(&tag, Envelope::of(work));
                     }
@@ -110,7 +110,6 @@ struct Connection {
     send_buf: ByteStream,
     can_read: bool,
     can_write: bool,
-    buffer: [u8; 1024],
 }
 
 impl Connection {
@@ -138,7 +137,6 @@ impl Default for Connection {
             send_buf: ByteStream::with_capacity(0),
             can_read: false,
             can_write: false,
-            buffer: [0u8; 1024],
         }
     }
 }
@@ -151,15 +149,16 @@ impl AnyActor for Connection {
             self.recv_buf = ByteStream::with_capacity(connect.config.recv_buffer_size);
             self.send_buf = ByteStream::with_capacity(connect.config.send_buffer_size);
         } else if let Some(work) = envelope.message.downcast_ref::<Work>() {
+            let mut buffer = [0u8; 1024];
             self.can_read = work.is_readable;
             self.can_write = self.can_write || work.is_writable;
             if self.can_read {
-                match self.socket.as_ref().unwrap().read(&mut self.buffer[..]) {
+                match self.socket.as_ref().unwrap().read(&mut buffer[..]) {
                     Ok(0) | Err(_) => {
                         self.is_open = false;
                     },
                     Ok(n) => {
-                        self.recv_buf.put(&self.buffer[0..n]);
+                        self.recv_buf.put(&buffer[0..n]);
                     }
                 }
             }
@@ -168,38 +167,15 @@ impl AnyActor for Connection {
                 return;
             }
 
-            while self.recv_buf.len() > 14 { // 12 = u32 * 4 + 2
-                // TODO extract reading from buffer
+            while let Some(packet) = Packet::from_bytes(&mut self.recv_buf) {
+                let mut host = self.socket.as_ref().unwrap().peer_addr().unwrap();
+                host.set_port(packet.port);
+                let from = format!("{}@{}", packet.from, host);
 
-                let copy = self.recv_buf.as_ref().to_vec();
-                let len = copy.len();
-                let mut buf = Bytes::from(copy);
-
-                let (to_len, from_len, vec_len, response_port) = (
-                    buf.get_u32() as usize,
-                    buf.get_u32() as usize,
-                    buf.get_u32() as usize,
-                    buf.get_u16()
-                );
-
-                if len >= 3 * 4 + 2 + to_len + from_len + vec_len {
-                    let _ = self.recv_buf.get(14);
-
-                    // TODO address error handling
-                    let to = String::from_utf8(self.recv_buf.get(to_len).unwrap()).unwrap();
-                    let from = String::from_utf8(self.recv_buf.get(from_len).unwrap()).unwrap();
-                    let vec = self.recv_buf.get(vec_len).unwrap();
-
-                    self.recv_buf.pull();
-
-                    let mut host = self.socket.as_ref().unwrap().peer_addr().unwrap();
-                    host.set_port(response_port);
-                    let from = format!("{}@{}", from, host);
-
-                    sender.log(&format!("server/rcvd: to={} from={} vec={:?}", to, from, vec));
-                    let e = Envelope::of(vec).to(&to).from(&from);
-                    sender.send(&to, e);
-                }
+                sender.log(&format!("server/rcvd: to={} from={} bytes={}",
+                                    packet.to, packet.from, packet.payload.len()));
+                let e = Envelope::of(packet.payload).to(&packet.to).from(&from);
+                sender.send(&packet.to, e);
             }
 
             if self.can_write && self.send_buf.len() > 0 {
