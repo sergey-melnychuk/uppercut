@@ -12,7 +12,10 @@ use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::monitor::{LogEntry, SchedulerMetrics, MetricEntry};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
+
+#[cfg(feature = "remote")]
 use crate::remote::server::{Server, StartServer};
+#[cfg(feature = "remote")]
 use crate::remote::client::{Client, StartClient};
 
 impl AnySender for Local<Envelope> {
@@ -210,14 +213,17 @@ impl<'a> Runtime<'a> {
         let run = Run { sender, pool };
 
         if remote.enabled {
-            let server = Server::listen(&remote.listening, &remote.server)?;
-            let port = server.port();
-            run.spawn("server", move || Box::new(server));
-            run.send("server", Envelope::of(StartServer));
+            #[cfg(feature = "remote")]
+            {
+                let server = Server::listen(&remote.listening, &remote.server)?;
+                let port = server.port();
+                run.spawn("server", move || Box::new(server));
+                run.send("server", Envelope::of(StartServer));
 
-            let client = Client::new(port, &remote.client);
-            run.spawn("client", move || Box::new(client));
-            run.send("client", Envelope::of(StartClient));
+                let client = Client::new(port, &remote.client);
+                run.spawn("client", move || Box::new(client));
+                run.send("client", Envelope::of(StartClient));
+            }
         }
 
         Ok(run)

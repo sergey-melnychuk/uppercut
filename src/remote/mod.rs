@@ -1,5 +1,6 @@
-pub(crate) mod packet;
+pub mod packet;
 pub mod server;
 pub mod client;
 
-mod ip;
+#[cfg(feature = "host")]
+pub mod ip;
