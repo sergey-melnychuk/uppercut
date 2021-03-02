@@ -19,6 +19,9 @@ mod monitor;
 #[path = "../src/remote/mod.rs"]
 mod remote;
 
+#[path = "../src/error.rs"]
+mod error;
+
 #[path = "../src/core.rs"]
 mod core;
 
