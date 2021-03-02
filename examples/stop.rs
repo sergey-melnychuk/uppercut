@@ -2,6 +2,7 @@ use std::sync::mpsc::{channel, Sender};
 
 extern crate uppercut;
 use uppercut::api::{AnyActor, Envelope, AnySender};
+use uppercut::config::{Config, SchedulerConfig};
 use uppercut::core::System;
 use uppercut::pool::ThreadPool;
 use std::any::Any;
@@ -33,7 +34,11 @@ impl AnyActor for State {
 }
 
 fn main() {
-    let sys = System::default();
+    let cfg = Config::new(SchedulerConfig {
+        eager_shutdown_enabled: false,
+        ..Default::default()
+    }, Default::default());
+    let sys = System::new("stop-example", "localhost", &cfg);
     let pool = ThreadPool::new(6);
     let run = sys.run(&pool).unwrap();
     run.spawn_default::<State>("x");

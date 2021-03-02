@@ -288,8 +288,7 @@ fn time() -> String {
     date.format("%Y-%m-%d %H:%M:%S%.3f").to_string()
 }
 
-// Run with:
-// RUST_LOG=info cargo run --example paxos
+// RUST_LOG=info cargo run --release --example paxos --features remote
 fn main() {
     env_logger::init();
     let pool = ThreadPool::new(6);

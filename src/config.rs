@@ -79,6 +79,7 @@ pub struct SchedulerConfig {
     pub delay_precision: Duration,
     pub actor_worker_threads: usize,
     pub extra_worker_threads: usize,
+    pub eager_shutdown_enabled: bool,
 }
 
 impl Default for SchedulerConfig {
@@ -92,6 +93,7 @@ impl Default for SchedulerConfig {
             delay_precision: Duration::from_millis(1),
             actor_worker_threads: 4,
             extra_worker_threads: 1,
+            eager_shutdown_enabled: true,
         }
     }
 }

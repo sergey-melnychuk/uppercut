@@ -28,6 +28,8 @@ impl AnyActor for PingPong {
     }
 }
 
+// cargo run --example ping --features remote -- --listen 0.0.0.0:10001
+// cargo run --example ping --features remote -- --listen 0.0.0.0:10002 --peer ping@127.0.0.1:10001
 fn main() {
     let matches = App::new("pingpong")
         .arg(Arg::with_name("listen")

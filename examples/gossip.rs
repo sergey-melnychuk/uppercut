@@ -244,7 +244,7 @@ impl AnyActor for Agent {
                 self.peers
                     .iter()
                     .for_each(|p| {
-                        let envelope = Envelope::of(gossip.clone());
+                        let envelope = Envelope::of(gossip.clone()).from(sender.me());
                         sender.send(&p.tag, envelope);
                     });
             }
@@ -309,6 +309,7 @@ impl AnyActor for Countdown {
     }
 }
 
+// RUST_LOG=info cargo run --release --example gossip --features remote
 fn main() {
     env_logger::init();
     let pool = ThreadPool::new(6);

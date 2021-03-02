@@ -25,6 +25,7 @@ impl AnyActor for PingPong {
     }
 }
 
+// cargo run --release --example remote --features remote
 fn main() {
     let cores = std::cmp::max(4, num_cpus::get());
     let pool = ThreadPool::new(cores + 2 + 1);

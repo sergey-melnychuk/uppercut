@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::io::{Read, Write};
 use std::time::Duration;
 use std::net::SocketAddr;
@@ -11,7 +10,7 @@ use parsed::stream::ByteStream;
 use crate::api::{AnyActor, AnySender, Envelope};
 use crate::config::ServerConfig;
 use crate::remote::packet::Packet;
-
+use crate::error::Error;
 
 #[derive(Debug)]
 pub struct StartServer;
@@ -42,12 +41,14 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn listen(addr: &str, config: &ServerConfig) -> Result<Server, Box<dyn Error>> {
+    pub fn listen(addr: &str, config: &ServerConfig) -> Result<Server, Error> {
         let poll = Poll::new().unwrap();
         let events = Events::with_capacity(config.events_capacity);
-        let addr = addr.parse::<SocketAddr>()?;
+        let addr = addr.parse::<SocketAddr>()
+            .map_err(|_| Error::InvalidServerAddress(addr.to_string()))?;
         let port = addr.port();
-        let mut socket = TcpListener::bind(addr)?;
+        let mut socket = TcpListener::bind(addr)
+            .map_err(|_| Error::ServerBindFailed(port))?;
         poll.registry().register(&mut socket, Token(0), Interest::READABLE).unwrap();
 
         let listener = Server {

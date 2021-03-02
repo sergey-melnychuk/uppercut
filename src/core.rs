@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::any::Any;
 use std::collections::{HashMap, BinaryHeap, HashSet};
 use std::time::{Instant, Duration, SystemTime};
@@ -12,6 +11,7 @@ use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::monitor::{LogEntry, SchedulerMetrics, MetricEntry};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
+use crate::error::Error;
 
 #[cfg(feature = "remote")]
 use crate::remote::server::{Server, StartServer};
@@ -202,7 +202,7 @@ impl<'a> Runtime<'a> {
         }
     }
 
-    fn start(self) -> Result<Run<'a>, Box<dyn Error>> {
+    fn start(self) -> Result<Run<'a>, Error> {
         let (pool, config) = (self.pool, self.config);
         let (scheduler, remote) = (config.scheduler, config.remote);
         let events = unbounded();
@@ -246,10 +246,12 @@ impl System {
         }
     }
 
-    pub fn run(self, pool: &ThreadPool) -> Result<Run, Box<dyn Error>> {
+    pub fn run(self, pool: &ThreadPool) -> Result<Run, Error> {
         if pool.size() < self.config.scheduler.total_threads_required() {
-            let e: Box<dyn Error> = "Not enough threads in the pool".to_string().into();
-            Err(e)
+            Err(Error::ThreadPoolTooSmall {
+                required: self.config.scheduler.total_threads_required(),
+                available: pool.size()
+            })
         } else {
             let runtime = Runtime::new(self.name, self.host, pool, self.config);
             Ok(runtime.start()?)
@@ -478,7 +480,7 @@ fn event_loop(actions_rx: Receiver<Action>,
             start = Instant::now();
         }
 
-        if scheduler.active.is_empty() {
+        if scheduler.config.eager_shutdown_enabled && scheduler.active.is_empty() {
             // Shutdown if all actors have stopped.
             break 'main;
         }
@@ -524,7 +526,10 @@ fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'
     }
 }
 
-fn report_logs(offload: &impl Fn(Runnable), app: &str, host: &str, logs: Vec<(String, Vec<(SystemTime, String)>)>) {
+fn report_logs(offload: &impl Fn(Runnable),
+               app: &str,
+               host: &str,
+               logs: Vec<(String, Vec<(SystemTime, String)>)>) {
     let app = app.to_string();
     let host = host.to_string();
     offload(Box::new(move || {
@@ -544,7 +549,11 @@ fn report_logs(offload: &impl Fn(Runnable), app: &str, host: &str, logs: Vec<(St
     }));
 }
 
-fn report_metrics(offload: &impl Fn(Runnable), app: &str, host: &str, scheduler: SchedulerMetrics, metrics: HashMap<String, Vec<(SystemTime, f64)>>) {
+fn report_metrics(offload: &impl Fn(Runnable),
+                  app: &str,
+                  host: &str,
+                  scheduler: SchedulerMetrics,
+                  metrics: HashMap<String, Vec<(SystemTime, f64)>>) {
     let app = app.to_string();
     let host = host.to_string();
 
