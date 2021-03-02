@@ -15,7 +15,7 @@ pub trait AnyActor: Send {
 pub trait AnySender {
     fn me(&self) -> &str;
     fn myself(&self) -> String;
-    fn send(&mut self, address: &str, message: Envelope);
+    fn send(&mut self, address: &str, envelope: Envelope);
     fn spawn(&mut self, address: &str, f: fn() -> Actor);
     fn delay(&mut self, address: &str, envelope: Envelope, duration: Duration);
     fn stop(&mut self, address: &str);
