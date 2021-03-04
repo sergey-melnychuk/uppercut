@@ -179,8 +179,9 @@ impl AnyActor for PingPong {
 }
 
 fn main() {
-    let cores = num_cpus::get();
-    let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 worker thread
+    // Max throughput seems to be achieved with 4 worker threads on 8+ cores machine.
+    let cores = std::cmp::min(4, num_cpus::get());
+    let pool = ThreadPool::new(cores + 2); // +1 event loop, +1 offload thread
 
     let mut scheduler_config = SchedulerConfig::with_total_threads(cores);
     scheduler_config.metric_reporting_enabled = true;
