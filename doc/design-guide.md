@@ -128,23 +128,37 @@ configuration remains, thus can be restarted any required number of attempts.
    - Simple structured Metrics and Logging model provided
    - Logs from actors are collected and dumped to stdout (if enabled) in the event loop
    - Scheduler metrics are collected and dumped to stdout (if enabled) in the event loop
-   - Custom metrics: TBD similar as Logging
+   - Custom metrics: same as Logging
+   - TODO: Expose logging/metrics DTOs with JSON support
+     - Logs/metrics can be sent as JSON over UDP for aggregation
+   - To keep in mind: Tracing support?
 1. Example implementations:
    - [PAXOS](/examples/paxos.rs) (distributed consensus - simple log replication)
    - [Gossip](/examples/gossip.rs) (heartbeat gossip distributed membership and failure detection)
    - TODO Distributed Lock
    - TODO Raft (leader election)
-   - TODO Distributed Hash-Table (consistent hashing, chord, etc)
-   - TODO Distributed Message Queue (routing, to keep in mind: persistence)
+   - TODO Distributed Hash-Table/KV-store (consistent-hashing/chord, replication/persistence)
+     - Bucket = Actor, Request = Actor
+     - Transactions (multi-key updates)?
+   - TODO Distributed Message Queue (routing, replication, persistence)
 
 #### TODO
+1. TCP-server:
+   - Add a way to the expose TCP server
+   - API: just let uppercut know how to spawn 'Connection' Actor, that receives `Vec<u8>`
+   - On top of that: HTTP-server: 
+     - just provide `fn (Request, Context) -> Response`
+     - and `Context` 
 1. Test-kit:
    - Allow probing for specific messages at specific Address
    - Allow accessing Actor's internal state (for tests only)
 1. Persistence:
    - Message queue that can be persisted to disk
    - Allows introduction of reliability guarantees
-   - Configurable backend (leveldb/rocksdb/etc)
+   - Configurable backend? (leveldb/rocksdb/etc)
+   - Custom lightweight append-log storage engine?
+     - KV mode: key-value based?
+     - MQ mode: append-log based?
 1. Insights into Environment internals (Admin Panel)
    - Extend existing metric collection approach
    - Allow narrowing down tracing to specific Address
@@ -158,6 +172,33 @@ configuration remains, thus can be restarted any required number of attempts.
      - standalone web-page?
      - Grafana dashboard?
    - [questdb](https://questdb.io/)
+1. Address 100% usage of all provided CPU cores.
+   - Burning down the CPU - but for performance!
+   - Acceptable in virtualized environments or containers?
+
+#### Experiments
+
+1. Queue-per-worker-thread scheduler
+   - The main thread keeps a separate work queue for each worker thread
+     - No contention between workers for a shared work queue
+     - More flexibility in routing between workers (e.g. the smallest queue, etc)
+   - The Actor instance is assigned to a specific worker thread
+     - Can be reassigned later (some kind of re-balancing of worker threads?)
+   - Allows introduction of routing/binding strategies:
+     - Dedicated thread group to run Actors (e.g. run this Actor on specific thread group)
+     - Thread groups dedicated to: logs/metrics/io/db/cpu/custom
+     - Communications between actor inside the same worker stay in the same thread
+     - Work distribution strategies to try: round-robin, smallest-counter, target-tag etc.
+   - Migration of Actors between Workers (re-balancing the Actor System)
+   - Overhead from introducing N bounded channels seems to be negligible
+   - Benchmark: uppercut-mio-server VS. hello-world in actix-web
+1. Run prod-like workload once KV/MQ impl is ready
+    
+#### Results
+
+1. Batch-processing of Actions on the main loop
+   - For the reference it is kept in `feature/batch-actions`
+   - Got ~20% lower throughput according to 'full' example
 
 #### References
 
