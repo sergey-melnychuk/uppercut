@@ -1,24 +1,27 @@
-use std::fmt;
+#[derive(Debug)]
+pub struct Meta {
+    pub host: String,
+    pub app: String,
+    pub tag: String,
+}
 
+// TODO Add JSON support
 #[derive(Debug)]
 pub struct LogEntry {
     pub at: u64,
-    pub host: String,
-    pub app: String,
-    pub tag: String,
+    pub meta: Meta,
     pub log: String,
 }
 
+// TODO Add JSON support
 #[derive(Debug)]
 pub struct MetricEntry {
     pub at: u64,
-    pub host: String,
-    pub app: String,
-    pub tag: String,
+    pub meta: Meta,
     pub val: f64,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SchedulerMetrics {
     pub name: String,
     pub at: u64,
@@ -73,23 +76,3 @@ impl SchedulerMetrics {
     }
 }
 
-impl fmt::Debug for SchedulerMetrics {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SchedulerMetrics")
-            .field("name", &self.name)
-            .field("at", &self.at)
-            .field("ticks", &self.ticks)
-            .field("miss", &self.miss)
-            .field("hit", &self.hit)
-            .field("messages", &self.messages)
-            .field("queues", &self.queues)
-            .field("returns", &self.returns)
-            .field("spawns", &self.spawns)
-            .field("delays", &self.delays)
-            .field("stops", &self.stops)
-            .field("drops", &self.drops)
-            .field("failures", &self.failures)
-            .field("actors", &self.actors)
-            .finish()
-    }
-}

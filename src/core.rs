@@ -8,7 +8,7 @@ use std::panic::{self, AssertUnwindSafe};
 use crossbeam_channel::{unbounded, Sender, Receiver, SendError};
 
 use crate::api::{Actor, AnyActor, AnySender, Envelope};
-use crate::monitor::{LogEntry, SchedulerMetrics, MetricEntry};
+use crate::monitor::{LogEntry, SchedulerMetrics, MetricEntry, Meta};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
 use crate::error::Error;
@@ -538,9 +538,11 @@ fn report_logs(offload: &impl Fn(Runnable),
                 let at = st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
                 let log = LogEntry {
                     at,
-                    host: host.clone(),
-                    app: app.clone(),
-                    tag: tag.clone(),
+                    meta: Meta {
+                        host: host.clone(),
+                        app: app.clone(),
+                        tag: tag.clone(),
+                    },
                     log: msg,
                 };
                 println!("{:?}", log);
@@ -565,9 +567,11 @@ fn report_metrics(offload: &impl Fn(Runnable),
                     .map(|(st, val)| {
                         MetricEntry {
                             at: st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64,
-                            host: host.clone(),
-                            app: app.clone(),
-                            tag: tag.clone(),
+                            meta: Meta {
+                                host: host.clone(),
+                                app: app.clone(),
+                                tag: tag.clone(),
+                            },
                             val,
                         }
                     })
