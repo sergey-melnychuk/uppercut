@@ -80,7 +80,7 @@ impl AnyActor for Counter {
 
 fn with_run<T: Eq + Debug, E, F: FnOnce(&Run) -> Result<T, E>>(expected: T, f: F) -> Result<(), E> {
     let cfg = Config::default();
-    let pool: ThreadPool = ThreadPool::for_config(&cfg);
+    let pool = ThreadPool::for_config(&cfg);
     let sys = System::new("test", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
     let got = f(&run);
