@@ -12,8 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --features remote --verbose
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --features remote --verbose
       - name: Run benches
-        run: cargo bench --verbose
+        run: cargo bench --features remote --verbose
