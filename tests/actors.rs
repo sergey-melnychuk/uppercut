@@ -1,33 +1,12 @@
-#[path = "../src/pool.rs"]
-mod pool;
-
-#[path = "../src/api.rs"]
-mod api;
-
-#[path = "../src/config.rs"]
-mod config;
-
-#[path = "../src/monitor.rs"]
-mod monitor;
-
-#[path = "../src/remote/mod.rs"]
-mod remote;
-
-#[path = "../src/error.rs"]
-mod error;
-
-#[path = "../src/core.rs"]
-mod core;
-
 use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
 use std::fmt::Debug;
 use std::time::Duration;
 use std::ops::Add;
 
-use crate::api::{AnyActor, Envelope, AnySender};
-use crate::core::{Run, System};
-use crate::config::Config;
-use crate::pool::ThreadPool;
+use uppercut::api::{AnyActor, Envelope, AnySender};
+use uppercut::core::{Run, System};
+use uppercut::config::Config;
+use uppercut::pool::ThreadPool;
 
 const ANSWER: usize = 42;
 

@@ -4,31 +4,10 @@ use bencher::Bencher;
 
 use std::sync::mpsc::{Sender, channel};
 
-#[path = "../src/pool.rs"]
-mod pool;
-
-#[path = "../src/api.rs"]
-mod api;
-
-#[path = "../src/config.rs"]
-mod config;
-
-#[path = "../src/monitor.rs"]
-mod monitor;
-
-#[path = "../src/remote/mod.rs"]
-mod remote;
-
-#[path = "../src/error.rs"]
-mod error;
-
-#[path = "../src/core.rs"]
-mod core;
-
-use crate::api::{Envelope, AnyActor, AnySender};
-use crate::core::System;
-use crate::config::Config;
-use crate::pool::ThreadPool;
+use uppercut::api::{Envelope, AnyActor, AnySender};
+use uppercut::core::System;
+use uppercut::config::Config;
+use uppercut::pool::ThreadPool;
 
 fn counter(b: &mut Bencher) {
     #[derive(Default)]
