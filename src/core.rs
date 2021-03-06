@@ -12,11 +12,18 @@ use crate::monitor::{LogEntry, SchedulerMetrics, MetricEntry, Meta};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
 use crate::error::Error;
+use crate::mailbox::Mailbox;
 
 #[cfg(feature = "remote")]
 use crate::remote::server::{Server, StartServer};
 #[cfg(feature = "remote")]
 use crate::remote::client::{Client, StartClient};
+
+const CLIENT: &str = "$CLIENT";
+
+#[allow(dead_code)] // SERVER const is unused when feature 'remote' is not enabled
+const SERVER: &str = "$SERVER";
+
 
 impl AnySender for Local<Envelope> {
     fn me(&self) -> &str {
@@ -122,7 +129,7 @@ impl<T: Any + Sized + Send> Default for Local<T> {
 struct Scheduler {
     config: SchedulerConfig,
     actors: HashMap<String, Actor>,
-    queue: HashMap<String, Vec<Envelope>>,
+    queue: HashMap<String, Mailbox>,
     tasks: BinaryHeap<Entry>,
     active: HashSet<String>,
 }
@@ -204,26 +211,24 @@ impl<'a> Runtime<'a> {
 
     fn start(self) -> Result<Run<'a>, Error> {
         let (pool, config) = (self.pool, self.config);
-        let (scheduler, remote) = (config.scheduler, config.remote);
         let events = unbounded();
         let actions = unbounded();
         let sender = actions.0.clone();
 
-        start_actor_runtime(self.name, self.host, pool, scheduler, events, actions);
+        start_actor_runtime(self.name, self.host, pool, config.scheduler, events, actions);
         let run = Run { sender, pool };
 
-        if remote.enabled {
-            #[cfg(feature = "remote")]
-            {
-                let server = Server::listen(&remote.listening, &remote.server)?;
-                let port = server.port();
-                run.spawn("server", move || Box::new(server));
-                run.send("server", Envelope::of(StartServer));
-
-                let client = Client::new(port, &remote.client);
-                run.spawn("client", move || Box::new(client));
-                run.send("client", Envelope::of(StartClient));
-            }
+        #[cfg(feature = "remote")]
+        if config.remote.enabled {
+            let server = Server::listen(
+                &config.remote.listening,
+                &config.remote.server)?;
+            let port = server.port();
+            run.spawn(SERVER, move || Box::new(server));
+            run.send(SERVER, Envelope::of(StartServer));
+            let client = Client::new(port, &config.remote.client);
+            run.spawn(CLIENT, move || Box::new(client));
+            run.send(CLIENT, Envelope::of(StartClient));
         }
 
         Ok(run)
@@ -349,7 +354,6 @@ fn event_loop(actions_rx: Receiver<Action>,
               offload: impl Fn(Runnable),
               name: String,
               host: String) {
-    let throughput = scheduler.config.actor_throughput;
     let mut scheduler_metrics = SchedulerMetrics::named(name.clone());
     let mut start = Instant::now();
     let mut logs = Vec::with_capacity(1024);
@@ -372,15 +376,11 @@ fn event_loop(actions_rx: Receiver<Action>,
                         continue 'main;
                     }
                     scheduler_metrics.returns += 1;
-                    let mut queue = scheduler.queue.remove(&tag).unwrap_or_default();
-                    if queue.is_empty() {
+                    let mailbox = scheduler.queue.get_mut(&tag).unwrap();
+                    if mailbox.is_empty() {
                         scheduler.actors.insert(tag, actor);
                     } else {
-                        if queue.len() > throughput {
-                            let remaining = queue.split_off(throughput);
-                            scheduler.queue.insert(tag.clone(), remaining);
-                        }
-                        let event = Event::Mail { tag, actor, queue };
+                        let event = Event::Mail { tag, actor, queue: mailbox.get() };
                         events_tx.send(event).unwrap();
                     }
                 },
@@ -392,30 +392,25 @@ fn event_loop(actions_rx: Receiver<Action>,
                         events_tx.send(event).unwrap();
                     }
                 },
-                Action::Queue { tag, queue: added } if scheduler.active.contains(&tag) => {
+                Action::Queue { tag, queue } if scheduler.active.contains(&tag) => {
                     scheduler_metrics.queues += 1;
-                    scheduler_metrics.messages += added.len() as u64;
+                    scheduler_metrics.messages += queue.len() as u64;
 
-                    let mut queue = scheduler.queue.remove(&tag).unwrap_or_default();
-                    queue.extend(added.into_iter());
+                    let mailbox = scheduler.queue.get_mut(&tag).unwrap();
+                    mailbox.put(queue);
 
                     if let Some(actor) = scheduler.actors.remove(&tag) {
-                        if queue.len() > throughput {
-                            let remaining = queue.split_off(throughput);
-                            scheduler.queue.insert(tag.clone(), remaining);
-                        }
-
-                        let event = Event::Mail { tag: tag.clone(), actor, queue };
+                        let event = Event::Mail { tag, actor, queue: mailbox.get() };
                         events_tx.send(event).unwrap();
-                    } else {
-                        scheduler.queue.insert(tag, queue);
                     }
                 },
                 Action::Spawn { tag, actor } if !scheduler.active.contains(&tag) => {
                     scheduler_metrics.spawns += 1;
                     scheduler.active.insert(tag.clone());
                     scheduler.actors.insert(tag.clone(), actor);
-                    let mailbox = Vec::with_capacity(scheduler.config.default_mailbox_capacity);
+                    let mailbox = Mailbox::new(
+                        scheduler.config.actor_throughput,
+                        scheduler.config.default_mailbox_capacity);
                     scheduler.queue.insert(tag.clone(), mailbox);
                 },
                 Action::Delay { entry } => {
@@ -520,7 +515,7 @@ fn start_actor_runtime(name: String,
 fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'a str {
     if address.contains('@') {
         envelope.to = address.to_string();
-        "client"
+        CLIENT
     } else {
         address
     }

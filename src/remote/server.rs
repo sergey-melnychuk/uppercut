@@ -49,7 +49,8 @@ impl Server {
         let port = addr.port();
         let mut socket = TcpListener::bind(addr)
             .map_err(|_| Error::ServerBindFailed(port))?;
-        poll.registry().register(&mut socket, Token(0), Interest::READABLE).unwrap();
+        poll.registry()
+            .register(&mut socket, Token(0), Interest::READABLE).unwrap();
 
         let listener = Server {
             config: config.clone(),
@@ -67,6 +68,12 @@ impl Server {
     }
 }
 
+impl Server {
+    fn tag(me: &str, id: usize) -> String {
+        format!("{}:connection#{:03}", me, id)
+    }
+}
+
 impl AnyActor for Server {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if envelope.message.downcast_ref::<Loop>().is_some() {
@@ -81,15 +88,22 @@ impl AnyActor for Server {
                                 .register(&mut socket, token,
                                           Interest::READABLE | Interest::WRITABLE)
                                 .unwrap();
-                            let tag = format!("server-connection-{}", self.counter);
+                            let tag = Server::tag(sender.me(), self.counter);
                             sender.spawn(&tag, || Box::new(Connection::default()));
-                            let connect = Connect { socket: Some(socket), keep_alive: true, config: self.config.clone() };
+                            let connect = Connect {
+                                socket: Some(socket),
+                                keep_alive: true,
+                                config: self.config.clone(),
+                            };
                             sender.send(&tag, Envelope::of(connect));
                         }
                     },
                     token => {
-                        let tag = format!("server-connection-{}", token.0);
-                        let work = Work { is_readable: event.is_readable(), is_writable: event.is_writable() };
+                        let tag = Server::tag(sender.me(), token.0);
+                        let work = Work {
+                            is_readable: event.is_readable(),
+                            is_writable: event.is_writable(),
+                        };
                         sender.send(&tag, Envelope::of(work));
                     }
                 }
