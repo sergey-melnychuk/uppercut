@@ -73,6 +73,7 @@ allow it to have access to required resources. If failed to start, the initial
 configuration remains, thus can be restarted any required number of attempts.
 
 #### DONE
+
 1. Remote Actors (based on IO-bridge)
    - Address is still regular String: local-actor-address@host:port
      - Example: connection-0123@192.168.1.2:9000
@@ -143,12 +144,19 @@ configuration remains, thus can be restarted any required number of attempts.
    - TODO Distributed Message Queue (routing, replication, persistence)
 
 #### TODO
-1. TCP-server:
-   - Add a way to the expose TCP server
-   - API: just let uppercut know how to spawn 'Connection' Actor, that receives `Vec<u8>`
-   - On top of that: HTTP-server: 
-     - just provide `fn (Request, Context) -> Response`
-     - and `Context` 
+
+1. Add API for generic TCP-server:
+   - Actor-per-Connection, messages: `Send(Vec<u8>)`, `Rcvd(Vec<u8>)`
+   - Usage:
+     - Buffer incoming `Rcvd` until a request is matched
+     - Propagate the request for processing to other actors
+     - Respond to the connection actor with serialized response in `Send`
+   - Example:
+     - Redis protocol impl?
+     - Distributed hashmap?
+1. Add API for generic HTTP-server on top of the TCP-server:
+   - Actor-per-Connection, Actor-per-Request: `Request(T)`, `Response(U)`
+   - Both `T` and `U` must be serializable (e.g. as JSON)
 1. Test-kit:
    - Allow probing for specific messages at specific Address
    - Allow accessing Actor's internal state (for tests only)
@@ -178,20 +186,23 @@ configuration remains, thus can be restarted any required number of attempts.
 
 #### Experiments
 
-1. Queue-per-worker-thread scheduler
+1. Queue-per-worker-thread scheduler (instead of a work queue shared between worker threads)
    - The main thread keeps a separate work queue for each worker thread
+     - Must allow better scaling to higher number of threads (current 'magic number' is 4)
      - No contention between workers for a shared work queue
-     - More flexibility in routing between workers (e.g. the smallest queue, etc)
-   - The Actor instance is assigned to a specific worker thread
-     - Can be reassigned later (some kind of re-balancing of worker threads?)
-   - Allows introduction of routing/binding strategies:
-     - Dedicated thread group to run Actors (e.g. run this Actor on specific thread group)
-     - Thread groups dedicated to: logs/metrics/io/db/cpu/custom
-     - Communications between actor inside the same worker stay in the same thread
-     - Work distribution strategies to try: round-robin, smallest-counter, target-tag etc.
-   - Migration of Actors between Workers (re-balancing the Actor System)
+     - More flexibility in routing between workers (round-robin, fastest-turnaround)
+     - Collecting some metrics from worker threads might make sense for routing heuristics
    - Overhead from introducing N bounded channels seems to be negligible
    - Benchmark: uppercut-mio-server VS. hello-world in actix-web
+1. Binding Actor to specific worker thread
+   - Messages between 'local' actors (bound to the same thread) do not leave the thread
+   - Main thread only binds actors and routes 'overflown' (not local) messages
+   - Allows introduction of routing/binding strategies:
+     - Thread groups dedicated to: actors/logs/metrics/io/db/cpu/custom
+     - Work distribution strategies to try: round-robin, smallest-counter, target-tag etc.
+   - Migration of Actors between Workers (re-balancing the Actor System)
+     - Unlucky binding might not benefit from same-thread-actor locality
+     - Navigate frequent pairs/sequences of messages and bind them to the same thread
 1. Run prod-like workload once KV/MQ impl is ready
     
 #### Results
