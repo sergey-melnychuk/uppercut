@@ -351,7 +351,7 @@ fn event_loop(actions_rx: Receiver<Action>,
               actions_tx: Sender<Action>,
               events_tx: Sender<Event>,
               mut scheduler: Scheduler,
-              offload: impl Fn(Runnable),
+              background: impl Fn(Runnable),
               name: String,
               host: String) {
     let mut scheduler_metrics = SchedulerMetrics::named(name.clone());
@@ -447,7 +447,7 @@ fn event_loop(actions_rx: Receiver<Action>,
             scheduler_metrics.miss += 1;
         }
 
-        let now = Instant::now().add(scheduler.config.delay_precision);
+        let now = Instant::now().add(scheduler.config.delay_precision / 2);
         while scheduler.tasks.peek().map(|e| e.at <= now).unwrap_or_default() {
             if let Some(Entry { tag, envelope, .. }) = scheduler.tasks.pop() {
                 let action = Action::Queue { tag, queue: vec![envelope] };
@@ -462,13 +462,13 @@ fn event_loop(actions_rx: Receiver<Action>,
             scheduler_metrics.actors = scheduler.active.len() as u64;
 
             if scheduler.config.metric_reporting_enabled {
-                report_metrics(&offload, &name, &host,scheduler_metrics.clone(), metrics);
+                report_metrics(&background, &name, &host, scheduler_metrics.clone(), metrics);
                 scheduler_metrics.reset();
                 metrics = HashMap::with_capacity(1024);
             }
 
             if scheduler.config.logging_enabled {
-                report_logs(&offload, &name, &host, logs);
+                report_logs(&background, &name, &host, logs);
                 logs = Vec::with_capacity(1024);
             }
 
@@ -476,7 +476,7 @@ fn event_loop(actions_rx: Receiver<Action>,
         }
 
         if scheduler.config.eager_shutdown_enabled && scheduler.active.is_empty() {
-            // Shutdown if all actors have stopped.
+            // Shutdown if there are not running actor (no progress can be made in such system).
             break 'main;
         }
     }
@@ -503,9 +503,9 @@ fn start_actor_runtime(name: String,
         });
     }
 
-    let offload = pool.link();
+    let background = pool.link();
     pool.submit(move || {
-        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, offload, name, host);
+        event_loop(actions_rx, actions_tx, events_tx.clone(), scheduler, background, name, host);
         for _ in 0..thread_count {
             events_tx.send(Event::Shutdown).unwrap();
         }
@@ -521,13 +521,13 @@ fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'
     }
 }
 
-fn report_logs(offload: &impl Fn(Runnable),
+fn report_logs(background: &impl Fn(Runnable),
                app: &str,
                host: &str,
                logs: Vec<(String, Vec<(SystemTime, String)>)>) {
     let app = app.to_string();
     let host = host.to_string();
-    offload(Box::new(move || {
+    background(Box::new(move || {
         for (tag, stm) in logs {
             for (st, msg) in stm {
                 let at = st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
@@ -546,7 +546,7 @@ fn report_logs(offload: &impl Fn(Runnable),
     }));
 }
 
-fn report_metrics(offload: &impl Fn(Runnable),
+fn report_metrics(background: &impl Fn(Runnable),
                   app: &str,
                   host: &str,
                   scheduler: SchedulerMetrics,
@@ -554,7 +554,7 @@ fn report_metrics(offload: &impl Fn(Runnable),
     let app = app.to_string();
     let host = host.to_string();
 
-    offload(Box::new(move || {
+    background(Box::new(move || {
         println!("{:?}", scheduler);
         let entries: Vec<MetricEntry> = metrics.into_iter()
             .flat_map(|(tag, entries)| {
