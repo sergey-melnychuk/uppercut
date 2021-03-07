@@ -8,7 +8,7 @@ use std::panic::{self, AssertUnwindSafe};
 use crossbeam_channel::{unbounded, Sender, Receiver, SendError};
 
 use crate::api::{Actor, AnyActor, AnySender, Envelope};
-use crate::monitor::{LogEntry, SchedulerMetrics, MetricEntry, Meta};
+use crate::monitor::{LoggerEntry, SchedulerMetrics, MetricEntry, Meta};
 use crate::config::{Config, SchedulerConfig};
 use crate::pool::{ThreadPool, Runnable};
 use crate::error::Error;
@@ -531,7 +531,7 @@ fn report_logs(offload: &impl Fn(Runnable),
         for (tag, stm) in logs {
             for (st, msg) in stm {
                 let at = st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
-                let log = LogEntry {
+                let log = LoggerEntry {
                     at,
                     meta: Meta {
                         host: host.clone(),

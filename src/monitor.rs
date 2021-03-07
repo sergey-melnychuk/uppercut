@@ -7,7 +7,7 @@ pub struct Meta {
 
 // TODO Add JSON support
 #[derive(Debug)]
-pub struct LogEntry {
+pub struct LoggerEntry {
     pub at: u64,
     pub meta: Meta,
     pub log: String,
