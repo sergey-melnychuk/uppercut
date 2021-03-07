@@ -11,9 +11,11 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
+      - name: Check
+        run: cargo check --all-features --examples --tests --benches
       - name: Build
-        run: cargo build --features remote --verbose
+        run: cargo build --all-features --verbose
       - name: Run tests
-        run: cargo test --features remote --verbose
+        run: cargo test --all-features --verbose
       - name: Run benches
-        run: cargo bench --features remote --verbose
+        run: cargo bench --all-features --verbose

@@ -1,6 +1,7 @@
 extern crate get_if_addrs;
 use std::net::IpAddr;
 
+#[allow(dead_code)] // unused for now, but might be useful in future
 pub fn host() -> IpAddr {
     get_if_addrs::get_if_addrs()
         .unwrap_or_default()
