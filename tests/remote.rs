@@ -141,7 +141,7 @@ mod reply_test {
 
 #[cfg(feature = "remote")]
 #[test]
-fn test_remove_reply() {
+fn test_remote_reply() {
     use std::time::Duration;
     use std::sync::mpsc::channel;
     use uppercut::core::System;
