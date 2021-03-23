@@ -146,17 +146,12 @@ configuration remains, thus can be restarted any required number of attempts.
 #### TODO
 
 1. Add API for generic TCP-server:
-   - Actor-per-Connection, messages: `Send(Vec<u8>)`, `Rcvd(Vec<u8>)`
-   - Usage:
-     - Buffer incoming `Rcvd` until a request is matched
-     - Propagate the request for processing to other actors
-     - Respond to the connection actor with serialized response in `Send`
-   - Example:
-     - Redis protocol impl?
-     - Distributed hashmap?
-1. Add API for generic HTTP-server on top of the TCP-server:
-   - Actor-per-Connection, Actor-per-Request: `Request(T)`, `Response(U)`
-   - Both `T` and `U` must be serializable (e.g. as JSON)
+   - Does not have to be included in the uppercut:
+     - [example](https://github.com/sergey-melnychuk/uppercut-lab/blob/master/uppercut-mio-server/src/server.rs)
+   - Break down into `Connection` and `Handler`:
+     - uppercut-provided `Connection` actor-per-connection (receives `Connect`/`Recv`/`Send`/stop)
+     - client-provided `Handler` (spawned by `Connection`, aware of the parent `Connection`)
+       - `Handler` is responsible for buffering/matching/processing/spawning-worker-actors/etc
 1. Test-kit:
    - Allow probing for specific messages at specific Address
    - Allow accessing Actor's internal state (for tests only)
