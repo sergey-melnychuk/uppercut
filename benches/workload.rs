@@ -39,7 +39,6 @@ fn counter(b: &mut Bencher) {
                     },
                     Protocol::Hit => {
                         self.tx.take().unwrap().send(self.count).unwrap();
-                        sender.stop(&me);
                     }
                 }
             }
@@ -82,8 +81,6 @@ fn chain(b: &mut Bencher) {
                 } else {
                     tx.send(*hits).unwrap();
                 }
-                let me = &sender.myself();
-                sender.stop(&me);
             }
         }
     }
