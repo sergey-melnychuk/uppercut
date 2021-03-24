@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::collections::{HashMap, BinaryHeap, HashSet};
 use std::time::{Instant, Duration, SystemTime};
 use std::cmp::Ordering;
@@ -19,13 +18,14 @@ use crate::remote::server::{Server, StartServer};
 #[cfg(feature = "remote")]
 use crate::remote::client::{Client, StartClient};
 
+#[allow(dead_code)] // CLIENT const is unused when feature 'remote' is not enabled
 const CLIENT: &str = "$CLIENT";
 
 #[allow(dead_code)] // SERVER const is unused when feature 'remote' is not enabled
 const SERVER: &str = "$SERVER";
 
 
-impl AnySender for Local<Envelope> {
+impl AnySender for Local {
     fn me(&self) -> &str {
         &self.tag
     }
@@ -35,23 +35,27 @@ impl AnySender for Local<Envelope> {
     }
 
     fn send(&mut self, address: &str, mut envelope: Envelope) {
-        let tag = adjust_remote_address(address, &mut envelope);
-        self.sent.entry(tag.to_string()).or_default().push(envelope);
+        let tag = adjust_remote_address(address, &mut envelope).to_string();
+        let action = Action::Queue { tag, queue: vec![envelope] };
+        self.tx.send(action).unwrap();
     }
 
     fn spawn(&mut self, address: &str, f: fn() -> Actor) {
-        self.spawns.insert(address.to_string(), f());
+        let action = Action::Spawn { tag: address.to_string(), actor: f() };
+        self.tx.send(action).unwrap();
     }
 
     fn delay(&mut self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
-        let tag = adjust_remote_address(address, &mut envelope);
-        let entry = Entry { at, tag: tag.to_string(), envelope };
-        self.delayed.push(entry);
+        let tag = adjust_remote_address(address, &mut envelope).to_string();
+        let entry = Entry { at, tag, envelope };
+        let action = Action::Delay { entry };
+        self.tx.send(action).unwrap();
     }
 
     fn stop(&mut self, address: &str) {
-        self.stopped.insert(address.to_string());
+        let action = Action::Stop { tag: address.to_string() };
+        self.tx.send(action).unwrap();
     }
 
     fn log(&mut self, message: &str) {
@@ -70,24 +74,8 @@ impl AnySender for Local<Envelope> {
     }
 }
 
-impl Local<Envelope> {
+impl Local {
     fn drain(&mut self, tx: &Sender<Action>) -> Result<(), SendError<Action>> {
-        for (tag, actor) in self.spawns.drain().into_iter() {
-            let action = Action::Spawn { tag, actor };
-            tx.send(action)?;
-        }
-        for (tag, queue) in self.sent.drain().into_iter() {
-            let action = Action::Queue { tag, queue };
-            tx.send(action)?;
-        }
-        for entry in self.delayed.drain(..).into_iter() {
-            let action = Action::Delay { entry };
-            tx.send(action)?;
-        }
-        for tag in self.stopped.drain().into_iter() {
-            let action = Action::Stop { tag };
-            tx.send(action)?;
-        }
         if !self.logs.is_empty() {
             let action = Action::Logs { tag: self.tag.clone(), logs: self.logs.to_owned() };
             tx.send(action)?;
@@ -102,24 +90,18 @@ impl Local<Envelope> {
     }
 }
 
-struct Local<T: Any + Sized + Send> {
+struct Local {
+    tx: Sender<Action>,
     tag: String,
-    sent: HashMap<String, Vec<T>>,
-    spawns: HashMap<String, Actor>,
-    delayed: Vec<Entry>,
-    stopped: HashSet<String>,
     logs: Vec<(SystemTime, String)>,
     metrics: HashMap<String, Vec<(SystemTime, f64)>>,
 }
 
-impl<T: Any + Sized + Send> Default for Local<T> {
-    fn default() -> Self {
+impl Local {
+    fn new(tx: Sender<Action>) -> Self {
         Self {
+            tx,
             tag: Default::default(),
-            sent: Default::default(),
-            spawns: Default::default(),
-            delayed: Default::default(),
-            stopped: Default::default(),
             logs: Default::default(),
             metrics: Default::default(),
         }
@@ -271,7 +253,7 @@ pub struct Run<'a> {
 
 impl<'a> Run<'a> {
     pub fn send(&self, address: &str, mut envelope: Envelope) {
-        let tag = adjust_remote_address(address, &mut envelope);
+        let tag = adjust_remote_address(address, &mut envelope).to_string();
         let action = Action::Queue { tag: tag.to_string(), queue: vec![envelope] };
         self.sender.send(action).unwrap();
     }
@@ -288,8 +270,8 @@ impl<'a> Run<'a> {
 
     pub fn delay(&self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
-        let tag = adjust_remote_address(address, &mut envelope);
-        let entry = Entry { at, tag: tag.to_string(), envelope };
+        let tag = adjust_remote_address(address, &mut envelope).to_string();
+        let entry = Entry { at, tag, envelope };
         let action = Action::Delay { entry };
         self.sender.send(action).unwrap();
     }
@@ -311,7 +293,7 @@ impl<'a> Run<'a> {
 
 fn worker_loop(tx: Sender<Action>,
                rx: Receiver<Event>) {
-    let mut sender: Local<Envelope> = Local::default();
+    let mut sender = Local::new(tx.clone());
     loop {
         let event = rx.try_recv();
         if let Ok(e) = event {
@@ -340,9 +322,7 @@ fn worker_loop(tx: Sender<Action>,
                 }
                 Event::Shutdown => break
             }
-            if sender.drain(&tx).is_err() {
-                break;
-            }
+            sender.drain(&tx).unwrap();
         }
     }
 }
@@ -512,13 +492,13 @@ fn start_actor_runtime(name: String,
     });
 }
 
-fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'a str {
+fn adjust_remote_address<'a>(address: &'a str, _envelope: &'a mut Envelope) -> &'a str {
+    #[cfg(feature = "remote")]
     if address.contains('@') {
-        envelope.to = address.to_string();
-        CLIENT
-    } else {
-        address
+        _envelope.to = address.to_string();
+        return CLIENT;
     }
+    address
 }
 
 fn report_logs(background: &impl Fn(Runnable),
