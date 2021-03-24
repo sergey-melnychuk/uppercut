@@ -23,6 +23,7 @@ struct Connect {
     socket: Option<TcpStream>,
     keep_alive: bool,
     config: ServerConfig,
+    remote: SocketAddr,
 }
 
 #[derive(Debug)]
@@ -39,6 +40,9 @@ pub struct Server {
     counter: usize,
     port: u16,
 }
+
+// TODO Make configurable?
+const PACKET_SIZE_LIMIT: usize = 4096 + 12; // 12 bytes header + max 4kb payload
 
 impl Server {
     pub fn listen(addr: &str, config: &ServerConfig) -> Result<Server, Error> {
@@ -70,7 +74,7 @@ impl Server {
 
 impl Server {
     fn tag(me: &str, id: usize) -> String {
-        format!("{}:connection#{:03}", me, id)
+        format!("{}#{:012}", me, id)
     }
 }
 
@@ -81,7 +85,7 @@ impl AnyActor for Server {
             for event in self.events.iter() {
                 match event.token() {
                     Token(0) => {
-                        while let Ok((mut socket, _)) = self.socket.accept() {
+                        while let Ok((mut socket, remote)) = self.socket.accept() {
                             self.counter += 1;
                             let token = Token(self.counter);
                             self.poll.registry()
@@ -94,6 +98,7 @@ impl AnyActor for Server {
                                 socket: Some(socket),
                                 keep_alive: true,
                                 config: self.config.clone(),
+                                remote,
                             };
                             sender.send(&tag, Envelope::of(connect));
                         }
@@ -182,15 +187,26 @@ impl AnyActor for Connection {
                 return;
             }
 
-            while let Some(packet) = Packet::from_bytes(&mut self.recv_buf) {
-                let mut host = self.socket.as_ref().unwrap().peer_addr().unwrap();
-                host.set_port(packet.port);
-                let from = format!("{}@{}", packet.from, host);
+            loop {
+                let r = Packet::from_bytes(&mut self.recv_buf, PACKET_SIZE_LIMIT);
+                if r.is_err() {
+                    sender.log("Packet parser marked connection buffer as failed");
+                    self.is_open = false;
+                    break;
+                }
 
-                sender.log(&format!("server/rcvd: to={} from={} bytes={}",
-                                    packet.to, packet.from, packet.payload.len()));
-                let e = Envelope::of(packet.payload).to(&packet.to).from(&from);
-                sender.send(&packet.to, e);
+                if let Ok(Some(packet)) = r {
+                    let mut host = self.socket.as_ref().unwrap().peer_addr().unwrap();
+                    host.set_port(packet.port);
+                    let from = format!("{}@{}", packet.from, host);
+
+                    sender.log(&format!("server/rcvd: to={} from={} bytes={}",
+                                        packet.to, packet.from, packet.payload.len()));
+                    let e = Envelope::of(packet.payload).to(&packet.to).from(&from);
+                    sender.send(&packet.to, e);
+                } else {
+                    break;
+                }
             }
 
             if self.can_write && self.send_buf.len() > 0 {

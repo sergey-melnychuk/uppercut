@@ -34,10 +34,10 @@ impl Packet {
         bytes.freeze()
     }
 
-    pub fn from_bytes(stream: &mut ByteStream) -> Option<Packet> {
+    pub fn from_bytes(stream: &mut ByteStream, limit: usize) -> Result<Option<Packet>, ()> {
         let min = 3 * size_of::<u32>() + size_of::<u16>();
         if stream.len() <= min {
-            return None;
+            return Ok(None);
         }
         let (to_len, from_len, payload_len, port) = (
             stream.get_u32().unwrap() as usize,
@@ -45,8 +45,13 @@ impl Packet {
             stream.get_u32().unwrap() as usize,
             stream.get_u16().unwrap()
         );
-        if stream.len() < min + to_len + from_len + payload_len {
-            return None;
+        let total = min + to_len + from_len + payload_len;
+        if total > limit {
+            // Naive check if such stream will ever match into a Packet
+            return Err(());
+        }
+        if stream.len() < total {
+            return Ok(None);
         }
 
         let to = String::from_utf8(stream.get(to_len).unwrap()).unwrap();
@@ -54,11 +59,11 @@ impl Packet {
         let payload = stream.get(payload_len).unwrap();
         stream.pull();
 
-        Some(Packet {
+        Ok(Some(Packet {
             to,
             from,
             payload,
             port
-        })
+        }))
     }
 }
