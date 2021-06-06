@@ -62,9 +62,17 @@ $ cargo run --example hello
 result: 42
 ```
 
+#### [`pi.rs`](/examples/pi.rs)
+
+```shell
+$ cargo run --release --example pi
+[...]
+Submitting 10000 workers making 100000 throws each.
+Pi estimate: 3.141561988 (in 5 seconds)
+```
+
 ### More examples
 
-- [Pi](/examples/pi.rs)
 - [remote](/examples/remote.rs)
-- [PAXOS](/examples/paxos.rs)
 - [Gossip](/examples/gossip.rs)
+- [PAXOS](/examples/paxos.rs)
