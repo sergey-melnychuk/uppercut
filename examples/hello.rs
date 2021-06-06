@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::sync::mpsc::{channel, Sender};
 
 extern crate uppercut;
@@ -5,8 +6,7 @@ use uppercut::api::{AnyActor, Envelope, AnySender};
 use uppercut::config::Config;
 use uppercut::core::System;
 use uppercut::pool::ThreadPool;
-use std::thread::sleep;
-use std::time::Duration;
+
 
 #[derive(Debug)]
 struct Message(usize, Sender<usize>);
@@ -24,18 +24,23 @@ impl AnyActor for State {
 }
 
 fn main() {
+    // Total 6 threads:
+    // = 1 scheduler thread (main event loop)
+    // + 4 actor-worker threads (effective parallelism level)
+    // + 1 background worker thread (logging, metrics, "housekeeping")
+    let tp = ThreadPool::new(6);
+
     let cfg = Config::default();
     let sys = System::new("basic", "localhost", &cfg);
-    let pool = ThreadPool::new(6);
-    let run = sys.run(&pool).unwrap();
+    let run = sys.run(&tp).unwrap();
 
     run.spawn_default::<State>("state");
 
     let (tx, rx) = channel();
     run.send("state", Envelope::of(Message(42, tx)));
 
-    sleep(Duration::from_secs(3));
-    let result = rx.recv().unwrap();
+    let timeout = Duration::from_secs(3);
+    let result = rx.recv_timeout(timeout).unwrap();
     println!("result: {}", result);
     run.shutdown();
 }
