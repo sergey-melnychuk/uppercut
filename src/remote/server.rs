@@ -23,7 +23,6 @@ struct Connect {
     socket: Option<TcpStream>,
     keep_alive: bool,
     config: ServerConfig,
-    remote: SocketAddr,
 }
 
 #[derive(Debug)]
@@ -85,7 +84,7 @@ impl AnyActor for Server {
             for event in self.events.iter() {
                 match event.token() {
                     Token(0) => {
-                        while let Ok((mut socket, remote)) = self.socket.accept() {
+                        while let Ok((mut socket, _remote)) = self.socket.accept() {
                             self.counter += 1;
                             let token = Token(self.counter);
                             self.poll.registry()
@@ -98,7 +97,6 @@ impl AnyActor for Server {
                                 socket: Some(socket),
                                 keep_alive: true,
                                 config: self.config.clone(),
-                                remote,
                             };
                             sender.send(&tag, Envelope::of(connect));
                         }

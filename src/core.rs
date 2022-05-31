@@ -254,7 +254,7 @@ pub struct Run<'a> {
 impl<'a> Run<'a> {
     pub fn send(&self, address: &str, mut envelope: Envelope) {
         let tag = adjust_remote_address(address, &mut envelope).to_string();
-        let action = Action::Queue { tag: tag.to_string(), queue: vec![envelope] };
+        let action = Action::Queue { tag, queue: vec![envelope] };
         self.sender.send(action).unwrap();
     }
 
@@ -536,7 +536,7 @@ fn report_metrics(background: &impl Fn(Runnable),
 
     background(Box::new(move || {
         println!("{:?}", scheduler);
-        let entries: Vec<MetricEntry> = metrics.into_iter()
+        metrics.into_iter()
             .flat_map(|(tag, entries)| {
                 entries.into_iter()
                     .map(|(st, val)| {
@@ -552,7 +552,6 @@ fn report_metrics(background: &impl Fn(Runnable),
                     })
                     .collect::<Vec<_>>()
             })
-            .collect();
-        entries.into_iter().for_each(|e| println!("{:?}", e));
+            .for_each(|e| println!("{:?}", e));
     }))
 }

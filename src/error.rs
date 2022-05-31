@@ -5,9 +5,9 @@ pub enum Error {
     ServerBindFailed(u16),
 }
 
-impl Into<Box<dyn std::error::Error>> for Error {
-    fn into(self) -> Box<dyn std::error::Error> {
-        match self {
+impl From<Error> for Box<dyn std::error::Error> {
+    fn from(error: Error) -> Box<dyn std::error::Error> {
+        match error {
             Error::ThreadPoolTooSmall { required, available } =>
                 format!("Not enough threads in the pool: available={} but required={}",
                         available, required).into(),
