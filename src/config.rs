@@ -8,10 +8,7 @@ pub struct Config {
 
 impl Config {
     pub fn new(scheduler: SchedulerConfig, remote: RemoteConfig) -> Config {
-        Config {
-            scheduler,
-            remote,
-        }
+        Config { scheduler, remote }
     }
 }
 

@@ -3,7 +3,7 @@ mod ping_test {
     use std::fmt::Debug;
     use std::sync::mpsc::Sender;
 
-    use uppercut::api::{AnyActor, Envelope, AnySender};
+    use uppercut::api::{AnyActor, AnySender, Envelope};
 
     #[derive(Default)]
     pub struct Tester {
@@ -36,13 +36,13 @@ mod ping_test {
 #[cfg(feature = "remote")]
 #[test]
 fn test_remote_ping_pong() {
-    use std::time::Duration;
+    use crate::ping_test::{Forward, Probe, Tester};
     use std::sync::mpsc::channel;
-    use uppercut::core::System;
-    use uppercut::config::{Config, SchedulerConfig, RemoteConfig, ServerConfig, ClientConfig};
-    use uppercut::pool::ThreadPool;
+    use std::time::Duration;
     use uppercut::api::Envelope;
-    use crate::ping_test::{Tester, Probe, Forward};
+    use uppercut::config::{ClientConfig, Config, RemoteConfig, SchedulerConfig, ServerConfig};
+    use uppercut::core::System;
+    use uppercut::pool::ThreadPool;
 
     const TIMEOUT: Duration = Duration::from_millis(300);
 
@@ -50,18 +50,24 @@ fn test_remote_ping_pong() {
     let pool = ThreadPool::new(cores + 4);
 
     let cfg1 = Config::new(
-        SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("127.0.0.1:10001",
-                                   ServerConfig::default(),
-                                   ClientConfig::default()));
+        SchedulerConfig::with_total_threads(cores / 2),
+        RemoteConfig::listening_at(
+            "127.0.0.1:10001",
+            ServerConfig::default(),
+            ClientConfig::default(),
+        ),
+    );
     let sys1 = System::new("A", "localhost", &cfg1);
     let run1 = sys1.run(&pool).unwrap();
 
     let cfg2 = Config::new(
-        SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("127.0.0.1:10002",
-                                   ServerConfig::default(),
-                                   ClientConfig::default()));
+        SchedulerConfig::with_total_threads(cores / 2),
+        RemoteConfig::listening_at(
+            "127.0.0.1:10002",
+            ServerConfig::default(),
+            ClientConfig::default(),
+        ),
+    );
     let sys2 = System::new("B", "localhost", &cfg2);
     let run2 = sys2.run(&pool).unwrap();
 
@@ -72,8 +78,13 @@ fn test_remote_ping_pong() {
 
     let (tx, rx) = channel();
     run2.send(address, Envelope::of(Probe(tx)));
-    run1.send(address, Envelope::of(
-        Forward(payload.clone(), "address@127.0.0.1:10002".to_string())));
+    run1.send(
+        address,
+        Envelope::of(Forward(
+            payload.clone(),
+            "address@127.0.0.1:10002".to_string(),
+        )),
+    );
 
     let result = rx.recv_timeout(TIMEOUT);
     run1.shutdown();
@@ -89,11 +100,11 @@ fn test_remote_ping_pong() {
 mod reply_test {
     use std::fmt::Debug;
     use std::sync::mpsc::Sender;
-    use uppercut::api::{AnyActor, Envelope, AnySender};
+    use uppercut::api::{AnyActor, AnySender, Envelope};
 
     #[derive(Default)]
     pub struct Spy {
-        pub tx: Option<Sender<String>>
+        pub tx: Option<Sender<String>>,
     }
 
     #[derive(Debug)]
@@ -111,12 +122,14 @@ mod reply_test {
                 let env = Envelope::of(probe.message.as_bytes().to_vec())
                     .to(&probe.target)
                     .from(sender.me());
-                sender.log(&format!("sent message '{}' to '{}'", probe.message, probe.target));
+                sender.log(&format!(
+                    "sent message '{}' to '{}'",
+                    probe.message, probe.target
+                ));
                 sender.send(&probe.target, env);
             } else if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
                 sender.log("response received");
-                let message = String::from_utf8(buf.clone())
-                    .unwrap_or("<undefined>".to_string());
+                let message = String::from_utf8(buf.clone()).unwrap_or("<undefined>".to_string());
                 self.tx.as_ref().unwrap().send(message.clone()).unwrap();
             }
         }
@@ -142,13 +155,13 @@ mod reply_test {
 #[cfg(feature = "remote")]
 #[test]
 fn test_remote_reply() {
-    use std::time::Duration;
-    use std::sync::mpsc::channel;
-    use uppercut::core::System;
-    use uppercut::config::{Config, SchedulerConfig, RemoteConfig, ServerConfig, ClientConfig};
-    use uppercut::pool::ThreadPool;
-    use uppercut::api::Envelope;
     use crate::reply_test::*;
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+    use uppercut::api::Envelope;
+    use uppercut::config::{ClientConfig, Config, RemoteConfig, SchedulerConfig, ServerConfig};
+    use uppercut::core::System;
+    use uppercut::pool::ThreadPool;
 
     const TIMEOUT: Duration = Duration::from_millis(10000);
 
@@ -156,18 +169,24 @@ fn test_remote_reply() {
     let pool = ThreadPool::new(cores + 4);
 
     let cfg1 = Config::new(
-        SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("127.0.0.1:20001",
-                                   ServerConfig::default(),
-                                   ClientConfig::default()));
+        SchedulerConfig::with_total_threads(cores / 2),
+        RemoteConfig::listening_at(
+            "127.0.0.1:20001",
+            ServerConfig::default(),
+            ClientConfig::default(),
+        ),
+    );
     let sys1 = System::new("A", "localhost", &cfg1);
     let run1 = sys1.run(&pool).unwrap();
 
     let cfg2 = Config::new(
-        SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at("127.0.0.1:20002",
-                                   ServerConfig::default(),
-                                   ClientConfig::default()));
+        SchedulerConfig::with_total_threads(cores / 2),
+        RemoteConfig::listening_at(
+            "127.0.0.1:20002",
+            ServerConfig::default(),
+            ClientConfig::default(),
+        ),
+    );
     let sys2 = System::new("B", "localhost", &cfg2);
     let run2 = sys2.run(&pool).unwrap();
 

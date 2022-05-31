@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
-use std::time::Duration;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Token};
@@ -9,8 +9,8 @@ use parsed::stream::ByteStream;
 
 use crate::api::{AnyActor, AnySender, Envelope};
 use crate::config::ServerConfig;
-use crate::remote::packet::Packet;
 use crate::error::Error;
+use crate::remote::packet::Packet;
 
 #[derive(Debug)]
 pub struct StartServer;
@@ -47,13 +47,14 @@ impl Server {
     pub fn listen(addr: &str, config: &ServerConfig) -> Result<Server, Error> {
         let poll = Poll::new().unwrap();
         let events = Events::with_capacity(config.events_capacity);
-        let addr = addr.parse::<SocketAddr>()
+        let addr = addr
+            .parse::<SocketAddr>()
             .map_err(|_| Error::InvalidServerAddress(addr.to_string()))?;
         let port = addr.port();
-        let mut socket = TcpListener::bind(addr)
-            .map_err(|_| Error::ServerBindFailed(port))?;
+        let mut socket = TcpListener::bind(addr).map_err(|_| Error::ServerBindFailed(port))?;
         poll.registry()
-            .register(&mut socket, Token(0), Interest::READABLE).unwrap();
+            .register(&mut socket, Token(0), Interest::READABLE)
+            .unwrap();
 
         let listener = Server {
             config: config.clone(),
@@ -80,16 +81,22 @@ impl Server {
 impl AnyActor for Server {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if envelope.message.downcast_ref::<Loop>().is_some() {
-            self.poll.poll(&mut self.events, Some(Duration::from_millis(1))).unwrap();
+            self.poll
+                .poll(&mut self.events, Some(Duration::from_millis(1)))
+                .unwrap();
             for event in self.events.iter() {
                 match event.token() {
                     Token(0) => {
                         while let Ok((mut socket, _remote)) = self.socket.accept() {
                             self.counter += 1;
                             let token = Token(self.counter);
-                            self.poll.registry()
-                                .register(&mut socket, token,
-                                          Interest::READABLE | Interest::WRITABLE)
+                            self.poll
+                                .registry()
+                                .register(
+                                    &mut socket,
+                                    token,
+                                    Interest::READABLE | Interest::WRITABLE,
+                                )
                                 .unwrap();
                             let tag = Server::tag(sender.me(), self.counter);
                             sender.spawn(&tag, || Box::new(Connection::default()));
@@ -100,7 +107,7 @@ impl AnyActor for Server {
                             };
                             sender.send(&tag, Envelope::of(connect));
                         }
-                    },
+                    }
                     token => {
                         let tag = Server::tag(sender.me(), token.0);
                         let work = Work {
@@ -174,7 +181,7 @@ impl AnyActor for Connection {
                 match self.socket.as_ref().unwrap().read(&mut buffer[..]) {
                     Ok(0) | Err(_) => {
                         self.is_open = false;
-                    },
+                    }
                     Ok(n) => {
                         self.recv_buf.put(&buffer[0..n]);
                     }
@@ -198,8 +205,12 @@ impl AnyActor for Connection {
                     host.set_port(packet.port);
                     let from = format!("{}@{}", packet.from, host);
 
-                    sender.log(&format!("server/rcvd: to={} from={} bytes={}",
-                                        packet.to, packet.from, packet.payload.len()));
+                    sender.log(&format!(
+                        "server/rcvd: to={} from={} bytes={}",
+                        packet.to,
+                        packet.from,
+                        packet.payload.len()
+                    ));
                     let e = Envelope::of(packet.payload).to(&packet.to).from(&from);
                     sender.send(&packet.to, e);
                 } else {
@@ -208,10 +219,15 @@ impl AnyActor for Connection {
             }
 
             if self.can_write && self.send_buf.len() > 0 {
-                match self.socket.as_ref().unwrap().write_all(self.send_buf.as_ref()) {
+                match self
+                    .socket
+                    .as_ref()
+                    .unwrap()
+                    .write_all(self.send_buf.as_ref())
+                {
                     Ok(_) => {
                         self.send_buf.clear();
-                    },
+                    }
                     _ => {
                         self.is_open = false;
                     }

@@ -1,10 +1,10 @@
-use std::collections::{HashSet, HashMap};
-use std::time::{Instant, Duration};
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 extern crate uppercut;
 use uppercut::api::{AnyActor, AnySender, Envelope};
+use uppercut::config::{Config, RemoteConfig, SchedulerConfig};
 use uppercut::core::System;
-use uppercut::config::{Config, SchedulerConfig, RemoteConfig};
 use uppercut::pool::ThreadPool;
 
 extern crate num_cpus;
@@ -15,9 +15,7 @@ struct Round {
 
 impl Round {
     fn new(size: usize) -> Round {
-        Round {
-            size,
-        }
+        Round { size }
     }
 }
 
@@ -56,13 +54,16 @@ impl AnyActor for Root {
                     if self.count == self.size {
                         self.seen.clear();
                         self.count = 0;
-                        sender.log(&format!("root completed the fanout of size: {} (epoch: {})", self.size, self.epoch));
+                        sender.log(&format!(
+                            "root completed the fanout of size: {} (epoch: {})",
+                            self.size, self.epoch
+                        ));
                         let trigger = Fan::Trigger { size: self.size };
                         let env = Envelope::of(trigger).from(sender.me());
                         sender.send(&sender.myself(), env);
                         self.epoch += 1;
                     }
-                },
+                }
                 Fan::Trigger { size } => {
                     self.size = *size;
                     for id in 0..self.size {
@@ -70,8 +71,8 @@ impl AnyActor for Root {
                         let env = Envelope::of(Fan::Out { id }).from(sender.me());
                         sender.send(&tag, env)
                     }
-                },
-                _ => ()
+                }
+                _ => (),
             }
         }
     }
@@ -87,14 +88,21 @@ impl AnyActor for Round {
         } else if let Some(acc) = envelope.message.downcast_ref::<Acc>() {
             let next = (acc.zero + acc.hits + 1) % self.size;
             let tag = format!("{}", next);
-            let msg = Acc { name: acc.name.clone(), zero: acc.zero, hits: acc.hits + 1 };
+            let msg = Acc {
+                name: acc.name.clone(),
+                zero: acc.zero,
+                hits: acc.hits + 1,
+            };
             let env = Envelope::of(msg).from(sender.me());
             sender.send(&tag, env);
         } else if let Some(Fan::Out { id }) = envelope.message.downcast_ref::<Fan>() {
             let env = Envelope::of(Fan::In { id: *id }).from(sender.me());
             sender.send(&envelope.from, env);
         } else {
-            sender.log(&format!("unexpected message: {:?}", envelope.message.type_id()));
+            sender.log(&format!(
+                "unexpected message: {:?}",
+                envelope.message.type_id()
+            ));
         }
     }
 }
@@ -110,9 +118,9 @@ impl Periodic {
         let mut ds = self.timings.keys().collect::<Vec<&usize>>();
         ds.sort();
         let min = *ds[0];
-        let max = *ds[ds.len()-1];
-        let p50 = *ds[(ds.len()-1) / 2];
-        let p99 = *ds[(ds.len()-1) * 99 / 100];
+        let max = *ds[ds.len() - 1];
+        let p50 = *ds[(ds.len() - 1) / 2];
+        let p99 = *ds[(ds.len() - 1) * 99 / 100];
         (min, max, p50, p99)
     }
 }
@@ -164,7 +172,12 @@ impl AnyActor for PingPong {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(s) = envelope.message.downcast_ref::<String>() {
             if self.count % 1000 == 0 {
-                sender.log(&format!("Actor '{}' (count={}) received message '{}'", sender.myself(), self.count, s));
+                sender.log(&format!(
+                    "Actor '{}' (count={}) received message '{}'",
+                    sender.myself(),
+                    self.count,
+                    s
+                ));
             }
             self.count += 1;
             if s == "ping" {
@@ -199,7 +212,11 @@ fn main() {
 
     for id in 0..1000 {
         let tag = format!("{}", id);
-        let acc = Acc { name: tag.clone(), zero: id, hits: 0 };
+        let acc = Acc {
+            name: tag.clone(),
+            zero: id,
+            hits: 0,
+        };
         let env = Envelope::of(acc).from(&tag);
         run.send(&tag, env);
     }

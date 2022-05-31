@@ -2,17 +2,16 @@ extern crate log;
 use log::{debug, info, warn};
 
 extern crate bytes;
-use bytes::{Bytes, Buf, BytesMut, BufMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crossbeam_channel::{bounded, Sender};
 
 extern crate uppercut;
-use uppercut::api::{AnyActor, Envelope, AnySender};
-use uppercut::config::{Config};
+use std::time::{Duration, Instant};
+use uppercut::api::{AnyActor, AnySender, Envelope};
+use uppercut::config::Config;
 use uppercut::core::{Run, System};
 use uppercut::pool::ThreadPool;
-use std::time::{Instant, Duration};
-
 
 #[derive(Debug, Default, Clone)]
 struct Peer {
@@ -56,7 +55,8 @@ enum Event {
 
 impl Agent {
     fn gossip(&self, time: u64) -> Vec<(String, u64)> {
-        let peers: Vec<(String, u64)> = self.peers
+        let peers: Vec<(String, u64)> = self
+            .peers
             .iter()
             .filter(|peer| peer.seen + self.horizon >= time)
             .map(|peer| (peer.tag.clone(), peer.beat))
@@ -96,7 +96,11 @@ impl Agent {
             } else {
                 // new (previously unseen) peer is introduced through the gossip
                 events.push(Event::New(tag.clone()));
-                self.peers.push(Peer { tag,  beat, seen: time });
+                self.peers.push(Peer {
+                    tag,
+                    beat,
+                    seen: time,
+                });
             }
         }
 
@@ -125,25 +129,28 @@ impl Into<Vec<u8>> for Message {
                 buf.put_u8(target.len() as u8);
                 buf.put_slice(target.as_bytes());
                 buf.put_u64(beat);
-            },
+            }
             Message::Pong(target, beat) => {
                 buf.put_u8(2);
                 buf.put_u8(target.len() as u8);
                 buf.put_slice(target.as_bytes());
                 buf.put_u64(beat);
-            },
+            }
             Message::Gossip(pairs) => {
                 buf.put_u8(3);
                 buf.put_u8(pairs.len() as u8);
-                pairs.into_iter()
-                    .for_each(|(tag, beat)| {
-                        buf.put_u8(tag.len() as u8);
-                        buf.put_slice(tag.as_bytes());
-                        buf.put_u64(beat);
-                    });
+                pairs.into_iter().for_each(|(tag, beat)| {
+                    buf.put_u8(tag.len() as u8);
+                    buf.put_slice(tag.as_bytes());
+                    buf.put_u64(beat);
+                });
             }
-            Message::Stop => { buf.put_u8(4); },
-            _ => { buf.put_u8(0); }
+            Message::Stop => {
+                buf.put_u8(4);
+            }
+            _ => {
+                buf.put_u8(0);
+            }
         }
         buf.split().to_vec()
     }
@@ -159,13 +166,13 @@ impl From<Vec<u8>> for Message {
                 let v = buf.copy_to_bytes(n as usize).to_vec();
                 let b = buf.get_u64();
                 Message::Ping(String::from_utf8(v).unwrap(), b)
-            },
+            }
             2 => {
                 let n = buf.get_u8();
                 let v = buf.copy_to_bytes(n as usize).to_vec();
                 let b = buf.get_u64();
                 Message::Pong(String::from_utf8(v).unwrap(), b)
-            },
+            }
             3 => {
                 let k = buf.get_u8();
                 let peers: Vec<(String, u64)> = (0..k)
@@ -178,9 +185,9 @@ impl From<Vec<u8>> for Message {
                     })
                     .collect();
                 Message::Gossip(peers)
-            },
+            }
             4 => Message::Stop,
-            _ => Message::Tick
+            _ => Message::Tick,
         }
     }
 }
@@ -190,14 +197,21 @@ impl AnyActor for Agent {
         let time = self.zero.elapsed().as_millis() as u64;
         if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let message: Message = buf.clone().into();
-            info!("tag={} time={} msg={:?} from={}\n\tpeers={:?}", sender.me(), time, message, envelope.from, self.peers);
+            info!(
+                "tag={} time={} msg={:?} from={}\n\tpeers={:?}",
+                sender.me(),
+                time,
+                message,
+                envelope.from,
+                self.peers
+            );
             match message {
                 Message::Gossip(peers) => {
                     let events = self.accept(time, peers);
                     for e in events {
                         info!("\ttag={} event={:?}", sender.me(), e);
                     }
-                },
+                }
                 Message::Ping(me, beat) => {
                     self.tag = me;
                     let is_known = self.peers.iter().any(|p| p.tag == sender.me());
@@ -210,7 +224,7 @@ impl AnyActor for Agent {
                             info!("\ttag={} event={:?}", sender.me(), e);
                         }
                     }
-                },
+                }
                 Message::Pong(me, beat) => {
                     self.tag = me;
                     let is_known = self.peers.iter().any(|p| p.tag == sender.me());
@@ -221,14 +235,14 @@ impl AnyActor for Agent {
                             info!("\ttag={} event={:?}", sender.me(), e);
                         }
                     }
-                },
+                }
                 Message::Stop => {
                     warn!("tag={} event=stop", sender.me());
                     sender.stop(&sender.myself());
                     let down: Vec<u8> = Down(sender.myself()).into();
                     sender.send(&self.countdown, Envelope::of(down));
-                },
-                _ => ()
+                }
+                _ => (),
             }
         } else if let Some(Message::Tick) = envelope.message.downcast_ref::<Message>() {
             self.beat += 1;
@@ -241,29 +255,34 @@ impl AnyActor for Agent {
                 let gossip = self.gossip(time);
                 info!("tag={} gossip: {:?}", sender.me(), gossip);
                 let gossip: Vec<u8> = Message::Gossip(gossip).into();
-                self.peers
-                    .iter()
-                    .for_each(|p| {
-                        let envelope = Envelope::of(gossip.clone()).from(sender.me());
-                        sender.send(&p.tag, envelope);
-                    });
+                self.peers.iter().for_each(|p| {
+                    let envelope = Envelope::of(gossip.clone()).from(sender.me());
+                    sender.send(&p.tag, envelope);
+                });
             }
             let delay = Duration::from_millis(self.tick);
             let myself = sender.myself();
             sender.delay(&myself, Envelope::of(Message::Tick), delay);
-        } else if let Some(Message::Init(horizon, tick, period, pings, countdown)) = envelope.message.downcast_ref::<Message>() {
-            debug!("tag={} msg=Init(horizon={} period={} tick={})", sender.me(), horizon, period, tick);
+        } else if let Some(Message::Init(horizon, tick, period, pings, countdown)) =
+            envelope.message.downcast_ref::<Message>()
+        {
+            debug!(
+                "tag={} msg=Init(horizon={} period={} tick={})",
+                sender.me(),
+                horizon,
+                period,
+                tick
+            );
             self.horizon = *horizon;
             self.tick = *tick;
             self.period = *period;
             self.countdown = countdown.to_owned();
             sender.send(&sender.myself(), Envelope::of(Message::Tick));
 
-            pings.into_iter()
-                .for_each(|tag| {
-                    let ping: Vec<u8> = Message::Ping(tag.clone(), self.beat).into();
-                    sender.send(tag, Envelope::of(ping).from(sender.me()));
-                })
+            pings.into_iter().for_each(|tag| {
+                let ping: Vec<u8> = Message::Ping(tag.clone(), self.beat).into();
+                sender.send(tag, Envelope::of(ping).from(sender.me()));
+            })
         }
     }
 }
@@ -349,7 +368,13 @@ fn main() {
         } else {
             vec!["peer-0@127.0.0.1:9101".to_string()]
         };
-        let init = Message::Init(horizon, period, tick, pings, "countdown@127.0.0.1:9101".to_string());
+        let init = Message::Init(
+            horizon,
+            period,
+            tick,
+            pings,
+            "countdown@127.0.0.1:9101".to_string(),
+        );
         run.send(&tag, Envelope::of(init));
 
         let millis = horizon * 5 * (1 + id as u64);
@@ -359,6 +384,5 @@ fn main() {
     }
 
     let _ = rx.recv().unwrap(); // wait until all 3 peers are down
-    runs.into_iter()
-        .for_each(|run| run.shutdown());
+    runs.into_iter().for_each(|run| run.shutdown());
 }

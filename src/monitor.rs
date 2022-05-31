@@ -75,4 +75,3 @@ impl SchedulerMetrics {
         self.actors = 0;
     }
 }
-

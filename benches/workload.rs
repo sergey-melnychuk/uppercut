@@ -2,11 +2,11 @@
 extern crate bencher;
 use bencher::Bencher;
 
-use std::sync::mpsc::{Sender, channel};
+use std::sync::mpsc::{channel, Sender};
 
-use uppercut::api::{Envelope, AnyActor, AnySender};
-use uppercut::core::System;
+use uppercut::api::{AnyActor, AnySender, Envelope};
 use uppercut::config::Config;
+use uppercut::core::System;
 use uppercut::pool::ThreadPool;
 
 fn counter(b: &mut Bencher) {
@@ -32,11 +32,11 @@ fn counter(b: &mut Bencher) {
                         self.limit = *limit;
                         self.tx = Some(tx.to_owned());
                         sender.send(&me, Envelope::of(Protocol::Hit).from(&me));
-                    },
+                    }
                     Protocol::Hit if self.count < self.limit => {
                         self.count += 1;
                         sender.send(&me, Envelope::of(Protocol::Hit).from(&me));
-                    },
+                    }
                     Protocol::Hit => {
                         self.tx.take().unwrap().send(self.count).unwrap();
                     }

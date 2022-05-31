@@ -1,6 +1,6 @@
 use std::any::Any;
-use std::time::{Duration, SystemTime};
 use std::fmt::Debug;
+use std::time::{Duration, SystemTime};
 
 pub type Actor = Box<dyn AnyActor>;
 

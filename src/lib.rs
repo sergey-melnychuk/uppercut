@@ -1,9 +1,9 @@
 pub mod api;
 pub mod config;
-pub mod monitor;
 pub mod core;
-pub mod pool;
 pub mod error;
+pub mod monitor;
+pub mod pool;
 
 mod mailbox;
 

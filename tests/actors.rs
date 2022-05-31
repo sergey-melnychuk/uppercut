@@ -1,11 +1,11 @@
-use std::sync::mpsc::{channel, Sender, RecvTimeoutError};
 use std::fmt::Debug;
-use std::time::Duration;
 use std::ops::Add;
+use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
+use std::time::Duration;
 
-use uppercut::api::{AnyActor, Envelope, AnySender};
-use uppercut::core::{Run, System};
+use uppercut::api::{AnyActor, AnySender, Envelope};
 use uppercut::config::Config;
+use uppercut::core::{Run, System};
 use uppercut::pool::ThreadPool;
 
 const ANSWER: usize = 42;
@@ -23,7 +23,9 @@ impl AnyActor for Test {
     }
 }
 
-struct Proxy { target: String }
+struct Proxy {
+    target: String,
+}
 
 impl AnyActor for Proxy {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
@@ -37,7 +39,7 @@ struct Counter(usize, Sender<usize>);
 #[derive(Debug)]
 enum CounterProtocol {
     Inc,
-    Get
+    Get,
 }
 
 impl AnyActor for Counter {
@@ -47,7 +49,7 @@ impl AnyActor for Counter {
                 CounterProtocol::Inc => {
                     self.0 += 1;
                     self.1.send(self.0).unwrap();
-                },
+                }
                 CounterProtocol::Get => {
                     let env = Envelope::of(CounterProtocol::Inc);
                     sender.send(&sender.myself(), env);
@@ -88,7 +90,11 @@ fn sent_message_received() -> Result<(), RecvTimeoutError> {
 fn forwarded_message_received() -> Result<(), RecvTimeoutError> {
     with_run(ANSWER, |run| {
         run.spawn("test", || Box::new(Test(ANSWER)));
-        run.spawn("proxy", || Box::new(Proxy { target: "test".to_string() }));
+        run.spawn("proxy", || {
+            Box::new(Proxy {
+                target: "test".to_string(),
+            })
+        });
 
         let (tx, rx) = channel();
         let env = Envelope::of(Init(tx));
@@ -186,9 +192,7 @@ impl AnyActor for Echo {
 fn delayed_messages_ordering() -> Result<(), RecvTimeoutError> {
     const N: usize = 3;
     let seq: Vec<usize> = (0..N).into_iter().collect();
-    let expected: Vec<(usize, usize)> = seq.iter()
-        .map(|x| (*x, *x))
-        .collect();
+    let expected: Vec<(usize, usize)> = seq.iter().map(|x| (*x, *x)).collect();
     with_run(expected, |run| {
         let (tx, rx) = channel();
         run.spawn("echo", || Box::new(Echo(tx)));

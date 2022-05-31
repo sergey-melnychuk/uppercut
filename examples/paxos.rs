@@ -8,18 +8,17 @@ extern crate chrono;
 use chrono::Local;
 
 extern crate bytes;
-use bytes::{Bytes, Buf, BytesMut, BufMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crossbeam_channel::{bounded, Sender};
 
 extern crate uppercut;
-use uppercut::api::{AnyActor, Envelope, AnySender};
-use uppercut::config::{Config};
+use uppercut::api::{AnyActor, AnySender, Envelope};
+use uppercut::config::Config;
 use uppercut::core::{Run, System};
 use uppercut::pool::ThreadPool;
 
 const SEND_DELAY_MILLIS: u64 = 20;
-
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum Message {
@@ -38,15 +37,42 @@ impl Into<Vec<u8>> for Message {
     fn into(self) -> Vec<u8> {
         let mut buf = BytesMut::with_capacity(1 + 8 + 8);
         match self {
-            Message::Request { val } => { buf.put_u8(1); buf.put_u64(val); },
-            Message::Prepare { seq } => { buf.put_u8(2); buf.put_u64(seq); },
-            Message::Promise { seq } => { buf.put_u8(3); buf.put_u64(seq); },
-            Message::Ignored { seq } => { buf.put_u8(4); buf.put_u64(seq); },
-            Message::Accept { seq, val } => { buf.put_u8(5); buf.put_u64(seq); buf.put_u64(val); },
-            Message::Accepted { seq, val } => { buf.put_u8(6); buf.put_u64(seq); buf.put_u64(val); },
-            Message::Rejected { seq } => { buf.put_u8(7); buf.put_u64(seq); },
-            Message::Selected { seq, val } => { buf.put_u8(8); buf.put_u64(seq); buf.put_u64(val); },
-            Message::Empty => buf.put_u8(0)
+            Message::Request { val } => {
+                buf.put_u8(1);
+                buf.put_u64(val);
+            }
+            Message::Prepare { seq } => {
+                buf.put_u8(2);
+                buf.put_u64(seq);
+            }
+            Message::Promise { seq } => {
+                buf.put_u8(3);
+                buf.put_u64(seq);
+            }
+            Message::Ignored { seq } => {
+                buf.put_u8(4);
+                buf.put_u64(seq);
+            }
+            Message::Accept { seq, val } => {
+                buf.put_u8(5);
+                buf.put_u64(seq);
+                buf.put_u64(val);
+            }
+            Message::Accepted { seq, val } => {
+                buf.put_u8(6);
+                buf.put_u64(seq);
+                buf.put_u64(val);
+            }
+            Message::Rejected { seq } => {
+                buf.put_u8(7);
+                buf.put_u64(seq);
+            }
+            Message::Selected { seq, val } => {
+                buf.put_u8(8);
+                buf.put_u64(seq);
+                buf.put_u64(val);
+            }
+            Message::Empty => buf.put_u8(0),
         };
         buf.split().to_vec()
     }
@@ -61,11 +87,20 @@ impl From<Vec<u8>> for Message {
             2 => Message::Prepare { seq: buf.get_u64() },
             3 => Message::Promise { seq: buf.get_u64() },
             4 => Message::Ignored { seq: buf.get_u64() },
-            5 => Message::Accept { seq: buf.get_u64(), val: buf.get_u64() },
-            6 => Message::Accepted { seq: buf.get_u64(), val: buf.get_u64() },
+            5 => Message::Accept {
+                seq: buf.get_u64(),
+                val: buf.get_u64(),
+            },
+            6 => Message::Accepted {
+                seq: buf.get_u64(),
+                val: buf.get_u64(),
+            },
             7 => Message::Rejected { seq: buf.get_u64() },
-            8 => Message::Selected { seq: buf.get_u64(), val: buf.get_u64() },
-            _ => Message::Empty
+            8 => Message::Selected {
+                seq: buf.get_u64(),
+                val: buf.get_u64(),
+            },
+            _ => Message::Empty,
         }
     }
 }
@@ -81,10 +116,19 @@ mod tests {
             Message::Prepare { seq: 42 },
             Message::Promise { seq: 42 },
             Message::Ignored { seq: 42 },
-            Message::Accept  { seq: 42, val: 0xCAFEBABEDEADBEEF },
-            Message::Accepted { seq: 42, val: 0xCAFEBABEDEADBEEF },
+            Message::Accept {
+                seq: 42,
+                val: 0xCAFEBABEDEADBEEF,
+            },
+            Message::Accepted {
+                seq: 42,
+                val: 0xCAFEBABEDEADBEEF,
+            },
             Message::Rejected { seq: 42 },
-            Message::Selected { seq: 42, val: 0xCAFEBABEDEADBEEF },
+            Message::Selected {
+                seq: 42,
+                val: 0xCAFEBABEDEADBEEF,
+            },
             Message::Empty,
         ];
 
@@ -95,7 +139,6 @@ mod tests {
         }
     }
 }
-
 
 #[derive(Default)]
 struct Agent {
@@ -122,7 +165,7 @@ impl Agent {
                     .iter()
                     .map(|tag| (tag.clone(), Message::Prepare { seq: self.seq + 1 }))
                     .collect()
-            },
+            }
             Message::Prepare { seq } => {
                 if seq > self.seq {
                     self.seq = seq;
@@ -130,7 +173,7 @@ impl Agent {
                 } else {
                     vec![(from, Message::Ignored { seq })]
                 }
-            },
+            }
             Message::Promise { seq } if seq > self.seq_promised => {
                 self.promised.insert(from);
                 if self.quorum(self.promised.len()) {
@@ -144,17 +187,17 @@ impl Agent {
                 } else {
                     vec![]
                 }
-            },
+            }
             Message::Ignored { seq: _ } => {
                 vec![]
-            },
+            }
             Message::Accept { seq, val } => {
                 if seq >= self.seq {
                     vec![(from, Message::Accepted { seq, val })]
                 } else {
                     vec![(from, Message::Rejected { seq })]
                 }
-            },
+            }
             Message::Accepted { seq, val } if seq > self.seq_accepted => {
                 self.accepted.insert(from);
                 if self.quorum(self.accepted.len()) {
@@ -168,10 +211,10 @@ impl Agent {
                 } else {
                     vec![]
                 }
-            },
+            }
             Message::Rejected { seq: _ } => {
                 vec![]
-            },
+            }
             Message::Selected { seq, val } => {
                 self.storage.push((seq, val));
                 self.seq = seq;
@@ -180,8 +223,8 @@ impl Agent {
                     .iter()
                     .map(|tag| (tag.clone(), Message::Selected { seq, val }))
                     .collect()
-            },
-            _ => vec![]
+            }
+            _ => vec![],
         }
     }
 
@@ -199,15 +242,19 @@ impl AnyActor for Agent {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let msg: Message = buf.to_owned().into();
-            info!("{} actor={} from={} message/parse={:?}", time(), sender.me(), envelope.from, msg);
+            info!(
+                "{} actor={} from={} message/parse={:?}",
+                time(),
+                sender.me(),
+                envelope.from,
+                msg
+            );
             self.handle(msg.clone(), envelope.from)
                 .into_iter()
                 .for_each(|(target, msg)| {
                     info!("\t{} sending to {}: {:?}", sender.me(), target, msg);
                     let buf: Vec<u8> = msg.into();
-                    let envelope = Envelope::of(buf)
-                        .to(&target)
-                        .from(sender.me());
+                    let envelope = Envelope::of(buf).to(&target).from(sender.me());
                     let delay = Duration::from_millis(SEND_DELAY_MILLIS);
                     sender.delay(&target, envelope, delay);
                 });
@@ -216,7 +263,12 @@ impl AnyActor for Agent {
                 Control::Init(peers) => {
                     self.peers = peers.to_owned();
                     self.me = sender.me().to_string();
-                    debug!("tag={} init: peers={:?} me={}", sender.me(), self.peers, self.me);
+                    debug!(
+                        "tag={} init: peers={:?} me={}",
+                        sender.me(),
+                        self.peers,
+                        self.me
+                    );
                 }
             }
         }
@@ -257,11 +309,14 @@ impl AnyActor for Client {
                     }
 
                     if self.log.len() == self.n as usize {
-                        self.sender.as_ref().unwrap()
-                            .send((sender.me().to_string(), self.log.clone())).unwrap()
+                        self.sender
+                            .as_ref()
+                            .unwrap()
+                            .send((sender.me().to_string(), self.log.clone()))
+                            .unwrap()
                     }
-                },
-                _ => ()
+                }
+                _ => (),
             }
         } else if let Some(setup) = envelope.message.downcast_ref::<Setup>() {
             let Setup(n, id, val, nodes, tx) = setup;
@@ -271,7 +326,13 @@ impl AnyActor for Client {
             self.done = false;
             self.nodes = nodes.to_owned();
             self.sender = Some(tx.to_owned());
-            info!("{} actor={} val={} seq={:?}", time(), sender.me(), self.val, self.log);
+            info!(
+                "{} actor={} val={} seq={:?}",
+                time(),
+                sender.me(),
+                self.val,
+                self.log
+            );
 
             let idx: usize = self.id as usize % self.nodes.len();
             let target = self.nodes.get(idx).unwrap();
@@ -315,7 +376,8 @@ fn main() {
     };
 
     const N: usize = 3;
-    let peers: Vec<String> = (0..N).zip(9001..(9001 + N))
+    let peers: Vec<String> = (0..N)
+        .zip(9001..(9001 + N))
         .into_iter()
         .map(|(i, port)| format!("node-{}@127.0.0.1:{}", i, port))
         .collect();
@@ -327,16 +389,18 @@ fn main() {
         run.send(tag, envelope);
     }
 
-    let clients = vec![
-        ("client-A", 30),
-        ("client-B", 73),
-        ("client-C", 42),
-    ];
+    let clients = vec![("client-A", 30), ("client-B", 73), ("client-C", 42)];
     let (tx, rx) = bounded(clients.len());
 
     for ((id, (tag, val)), run) in clients.clone().into_iter().enumerate().zip(runs.iter()) {
         run.spawn_default::<Client>(tag);
-        let setup = Setup(clients.len() as u32, id as u64, val, peers.clone(), tx.clone());
+        let setup = Setup(
+            clients.len() as u32,
+            id as u64,
+            val,
+            peers.clone(),
+            tx.clone(),
+        );
         let envelope = Envelope::of(setup);
         run.send(tag, envelope);
         println!("{}: {}", tag, val);
@@ -352,12 +416,12 @@ fn main() {
         }
     }
 
-    runs.into_iter()
-        .for_each(|run| run.shutdown());
+    runs.into_iter().for_each(|run| run.shutdown());
 
     let ok = {
         let numbers: Vec<u64> = clients.iter().map(|(_, n)| *n).collect();
-        seen.iter().all(|vec| numbers.iter().all(|x| vec.contains(x)))
+        seen.iter()
+            .all(|vec| numbers.iter().all(|x| vec.contains(x)))
     };
     if seen.len() == 1 && ok {
         println!("OK");

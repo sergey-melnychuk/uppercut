@@ -2,8 +2,8 @@ use std::sync::mpsc::{channel, Sender};
 
 extern crate uppercut;
 use uppercut::api::{AnyActor, AnySender, Envelope};
-use uppercut::core::System;
 use uppercut::config::Config;
+use uppercut::core::System;
 use uppercut::pool::ThreadPool;
 
 extern crate num_cpus;
@@ -38,7 +38,12 @@ struct Done(usize, usize);
 
 impl AnyActor for Master {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
-        if let Some(Pi { workers, throws, result }) = envelope.message.downcast_ref::<Pi>() {
+        if let Some(Pi {
+            workers,
+            throws,
+            result,
+        }) = envelope.message.downcast_ref::<Pi>()
+        {
             self.size = *workers;
             self.result = Some(result.clone());
             for idx in 0..self.size {
@@ -54,7 +59,9 @@ impl AnyActor for Master {
 
             if self.size == 0 {
                 let pi = 4.0 * self.hits as f64 / self.total as f64;
-                self.result.as_ref().iter()
+                self.result
+                    .as_ref()
+                    .iter()
                     .for_each(|tx| tx.send(pi).unwrap());
             }
         }
@@ -70,7 +77,7 @@ impl AnyActor for Worker {
                 let x: f64 = rng.gen_range(-1.0, 1.0);
                 let y: f64 = rng.gen_range(-1.0, 1.0);
 
-                if (x*x + y*y).sqrt() <= 1.0 {
+                if (x * x + y * y).sqrt() <= 1.0 {
                     hits += 1;
                 }
             }
@@ -92,8 +99,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let now = Instant::now();
     let (tx, rx) = channel();
     run.spawn_default::<Master>("master");
-    let pi = Pi { workers: 10000, throws: 100000, result: tx };
-    println!("Submitting {} workers making {} throws each.", pi.workers, pi.throws);
+    let pi = Pi {
+        workers: 10000,
+        throws: 100000,
+        result: tx,
+    };
+    println!(
+        "Submitting {} workers making {} throws each.",
+        pi.workers, pi.throws
+    );
     let envelope = Envelope::of(pi);
     run.send("master", envelope);
 

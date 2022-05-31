@@ -1,13 +1,13 @@
 use std::sync::mpsc::{channel, Sender};
 
 extern crate uppercut;
-use uppercut::api::{AnyActor, Envelope, AnySender};
-use uppercut::config::{Config, SchedulerConfig};
-use uppercut::core::System;
-use uppercut::pool::ThreadPool;
 use std::any::Any;
 use std::thread::sleep;
 use std::time::Duration;
+use uppercut::api::{AnyActor, AnySender, Envelope};
+use uppercut::config::{Config, SchedulerConfig};
+use uppercut::core::System;
+use uppercut::pool::ThreadPool;
 
 #[derive(Debug)]
 struct Message(Option<usize>, Sender<usize>);
@@ -34,10 +34,13 @@ impl AnyActor for State {
 }
 
 fn main() {
-    let cfg = Config::new(SchedulerConfig {
-        eager_shutdown_enabled: false,
-        ..Default::default()
-    }, Default::default());
+    let cfg = Config::new(
+        SchedulerConfig {
+            eager_shutdown_enabled: false,
+            ..Default::default()
+        },
+        Default::default(),
+    );
     let sys = System::new("stop-example", "localhost", &cfg);
     let pool = ThreadPool::new(6);
     let run = sys.run(&pool).unwrap();

@@ -1,10 +1,10 @@
-use crossbeam_channel::{unbounded, Sender, Receiver};
-use std::thread::{self, JoinHandle};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::panic::{self, AssertUnwindSafe};
+use std::thread::{self, JoinHandle};
 
 extern crate core_affinity;
-use core_affinity::CoreId;
 use crate::config::Config;
+use core_affinity::CoreId;
 
 pub type Runnable = Box<dyn FnOnce() + Send + 'static>;
 
@@ -38,15 +38,12 @@ impl ThreadPool {
             workers.push(worker);
         }
 
-        ThreadPool {
-            sender,
-            workers,
-        }
+        ThreadPool { sender, workers }
     }
 
     pub fn submit<F>(&self, f: F)
-        where
-            F: FnOnce() + Send + 'static
+    where
+        F: FnOnce() + Send + 'static,
     {
         let job = Job::Task(Box::new(f));
         self.sender.send(job).unwrap();
@@ -97,9 +94,9 @@ impl Worker {
                             let _ = panic::catch_unwind(AssertUnwindSafe(|| {
                                 f();
                             }));
-                        },
+                        }
                         Ok(Job::Stop) => break,
-                        Err(_) => break
+                        Err(_) => break,
                     }
                 }
             })

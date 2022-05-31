@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use uppercut::pool::ThreadPool;
-use uppercut::config::{Config, RemoteConfig, ClientConfig, ServerConfig, SchedulerConfig};
+use uppercut::api::{AnyActor, AnySender, Envelope};
+use uppercut::config::{ClientConfig, Config, RemoteConfig, SchedulerConfig, ServerConfig};
 use uppercut::core::System;
-use uppercut::api::{Envelope, AnyActor, AnySender};
+use uppercut::pool::ThreadPool;
 
 extern crate clap;
-use clap::{Arg, App};
+use clap::{App, Arg};
 
 #[derive(Default)]
 struct PingPong;
@@ -19,7 +19,8 @@ impl AnyActor for PingPong {
 
             let response = if vec == b"ping" {
                 Envelope::of(b"pong".to_vec()).from(sender.me())
-            } else { // vec == b"pong"
+            } else {
+                // vec == b"pong"
                 Envelope::of(b"ping".to_vec()).from(sender.me())
             };
 
@@ -32,16 +33,20 @@ impl AnyActor for PingPong {
 // cargo run --example ping --features remote -- --listen 0.0.0.0:10002 --peer ping@127.0.0.1:10001
 fn main() {
     let matches = App::new("pingpong")
-        .arg(Arg::with_name("listen")
-            .long("listen")
-            .short("l")
-            .required(true)
-            .takes_value(true))
-        .arg(Arg::with_name("peer")
-            .long("peer")
-            .short("p")
-            .required(false)
-            .takes_value(true))
+        .arg(
+            Arg::with_name("listen")
+                .long("listen")
+                .short("l")
+                .required(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("peer")
+                .long("peer")
+                .short("p")
+                .required(false)
+                .takes_value(true),
+        )
         .get_matches();
 
     let listen = matches.value_of("listen").expect("'listen' is missing");
@@ -51,8 +56,9 @@ fn main() {
     let pool = ThreadPool::new(cores + 2 + 1);
 
     let cfg = Config::new(
-        SchedulerConfig::with_total_threads(cores/2),
-        RemoteConfig::listening_at(listen, ServerConfig::default(), ClientConfig::default()));
+        SchedulerConfig::with_total_threads(cores / 2),
+        RemoteConfig::listening_at(listen, ServerConfig::default(), ClientConfig::default()),
+    );
     let sys = System::new("one", "localhost", &cfg);
     let run = sys.run(&pool).unwrap();
 
@@ -63,5 +69,5 @@ fn main() {
         run.send(addr, env);
     }
 
-    std::thread::park();  // block current thread
+    std::thread::park(); // block current thread
 }

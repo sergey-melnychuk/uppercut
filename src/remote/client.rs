@@ -1,18 +1,17 @@
-use std::error::Error;
-use std::net::SocketAddr;
-use std::io::{Read, Write, ErrorKind};
-use std::time::Duration;
 use std::collections::HashMap;
+use std::error::Error;
+use std::io::{ErrorKind, Read, Write};
+use std::net::SocketAddr;
+use std::time::Duration;
 
-use mio::{Poll, Events, Token, Interest};
 use mio::net::TcpStream;
+use mio::{Events, Interest, Poll, Token};
 
 use parsed::stream::ByteStream;
 
 use crate::api::{AnyActor, AnySender, Envelope};
 use crate::config::ClientConfig;
 use crate::remote::packet::Packet;
-
 
 pub struct Client {
     config: ClientConfig,
@@ -46,7 +45,10 @@ impl Client {
         let addr: SocketAddr = target.parse()?;
         let mut socket = TcpStream::connect(addr)?;
         let id = self.counter;
-        self.poll.registry().register(&mut socket, Token(id), Interest::WRITABLE).unwrap();
+        self.poll
+            .registry()
+            .register(&mut socket, Token(id), Interest::WRITABLE)
+            .unwrap();
 
         let connection = Connection::connected(addr.to_string(), socket, self.config.clone());
         self.connections.insert(id, connection);
@@ -75,10 +77,14 @@ impl Client {
             }
 
             if connection.is_open {
-                self.poll.registry()
-                    .reregister(connection.socket.as_mut().unwrap(),
-                                event.token(),
-                                Interest::READABLE.add(Interest::WRITABLE)).unwrap();
+                self.poll
+                    .registry()
+                    .reregister(
+                        connection.socket.as_mut().unwrap(),
+                        event.token(),
+                        Interest::READABLE.add(Interest::WRITABLE),
+                    )
+                    .unwrap();
 
                 self.connections.insert(id, connection);
             } else {
@@ -120,10 +126,15 @@ impl Connection {
 
 impl Connection {
     fn send(&mut self) {
-        match self.socket.as_ref().unwrap().write_all(self.send_buf.as_ref()) {
+        match self
+            .socket
+            .as_ref()
+            .unwrap()
+            .write_all(self.send_buf.as_ref())
+        {
             Ok(_) => {
                 self.send_buf.clear();
-            },
+            }
             Err(_) => {
                 self.is_open = false;
             }
@@ -138,11 +149,11 @@ impl Connection {
                 Ok(n) if n > 0 => {
                     self.recv_buf.put(&buffer[0..n]);
                     bytes_received += n;
-                },
+                }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => break,
                 Ok(_) | Err(_) => {
                     self.is_open = false;
-                    break
+                    break;
                 }
             }
         }
@@ -170,13 +181,22 @@ impl AnyActor for Client {
             if ok {
                 let packet = Packet::new(to, from, payload.to_vec(), self.response_port);
                 self.put(&host, packet.to_bytes().as_ref());
-                sender.log(&format!("sent: to={}[@{}] from={} bytes={}",
-                                    packet.to, host, packet.from, payload.len()));
+                sender.log(&format!(
+                    "sent: to={}[@{}] from={} bytes={}",
+                    packet.to,
+                    host,
+                    packet.from,
+                    payload.len()
+                ));
             } else {
-                sender.log(&format!("Failed to send: to={}[@{}] from={} bytes={}",
-                                    to, host, from, payload.len()));
+                sender.log(&format!(
+                    "Failed to send: to={}[@{}] from={} bytes={}",
+                    to,
+                    host,
+                    from,
+                    payload.len()
+                ));
             }
-
         } else if envelope.message.downcast_ref::<StartClient>().is_some() {
             let me = sender.myself();
             sender.send(&me, Envelope::of(Loop));
@@ -186,7 +206,8 @@ impl AnyActor for Client {
 
 fn split_address(address: String) -> (String, String) {
     if address.contains('@') {
-        let split = address.split('@')
+        let split = address
+            .split('@')
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
         (split[0].to_owned(), split[1].to_owned())

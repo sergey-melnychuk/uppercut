@@ -1,7 +1,7 @@
-use bytes::{Bytes, BytesMut, BufMut};
+use bytes::{BufMut, Bytes, BytesMut};
 
-use std::mem::size_of;
 use parsed::stream::ByteStream;
+use std::mem::size_of;
 
 pub struct Packet {
     pub to: String,
@@ -21,8 +21,11 @@ impl Packet {
     }
 
     pub fn to_bytes(&self) -> Bytes {
-        let cap: usize = 3 * size_of::<u32>() + size_of::<u16>()
-            + self.payload.len() + self.to.len() + self.from.len();
+        let cap: usize = 3 * size_of::<u32>()
+            + size_of::<u16>()
+            + self.payload.len()
+            + self.to.len()
+            + self.from.len();
         let mut bytes = BytesMut::with_capacity(cap);
         bytes.put_u32(self.to.len() as u32);
         bytes.put_u32(self.from.len() as u32);
@@ -43,7 +46,7 @@ impl Packet {
             stream.get_u32().unwrap() as usize,
             stream.get_u32().unwrap() as usize,
             stream.get_u32().unwrap() as usize,
-            stream.get_u16().unwrap()
+            stream.get_u16().unwrap(),
         );
         let total = min + to_len + from_len + payload_len;
         if total > limit {
@@ -63,7 +66,7 @@ impl Packet {
             to,
             from,
             payload,
-            port
+            port,
         }))
     }
 }

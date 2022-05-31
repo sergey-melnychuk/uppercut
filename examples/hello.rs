@@ -1,12 +1,11 @@
-use std::time::Duration;
 use std::sync::mpsc::{channel, Sender};
+use std::time::Duration;
 
 extern crate uppercut;
-use uppercut::api::{AnyActor, Envelope, AnySender};
+use uppercut::api::{AnyActor, AnySender, Envelope};
 use uppercut::config::Config;
 use uppercut::core::System;
 use uppercut::pool::ThreadPool;
-
 
 #[derive(Debug)]
 struct Message(usize, Sender<usize>);

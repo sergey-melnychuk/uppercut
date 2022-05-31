@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate bencher;
 use bencher::Bencher;
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 
 const ENTITIES: usize = 1024;
 const CAPACITY: usize = 128;
@@ -23,7 +23,10 @@ fn vec(b: &mut Bencher) {
         let remaining = queue.split_off(PREFIX);
         map.insert(0, remaining);
 
-        assert_eq!(queue, vec![0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+        assert_eq!(
+            queue,
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        );
         assert_eq!(map.remove(&0).unwrap().len(), CAPACITY - PREFIX);
     });
 }
@@ -42,7 +45,10 @@ fn deq(b: &mut Bencher) {
 
         let selected = deq.split_off(deq.len() - PREFIX);
         let q = selected.into_iter().rev().collect::<Vec<usize>>();
-        assert_eq!(q, vec![0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+        assert_eq!(
+            q,
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        );
         assert_eq!(map.remove(&0).unwrap().len(), CAPACITY - PREFIX);
     });
 }
