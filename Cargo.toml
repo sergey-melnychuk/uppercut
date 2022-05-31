@@ -16,7 +16,7 @@ panic = "unwind"
 panic = "unwind"
 
 [features]
-default = []
+default = ["remote"]
 host = ["get_if_addrs"]
 remote = ["mio/os-poll", "mio/tcp"]
 
