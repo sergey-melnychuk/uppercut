@@ -75,7 +75,7 @@ fn chain(b: &mut Bencher) {
             if let Some(Hit(tx, hits)) = envelope.message.downcast_ref::<Hit>() {
                 if *hits < LENGTH {
                     let tag = format!("{}", hits + 1);
-                    sender.spawn(&tag, || Box::new(Chain));
+                    sender.spawn(&tag, &|| Box::new(Chain));
                     let env = Envelope::of(Hit(tx.to_owned(), hits + 1));
                     sender.send(&tag, env);
                 } else {

@@ -99,7 +99,7 @@ impl AnyActor for Server {
                                 )
                                 .unwrap();
                             let tag = Server::tag(sender.me(), self.counter);
-                            sender.spawn(&tag, || Box::new(Connection::default()));
+                            sender.spawn(&tag, &|| Box::new(Connection::default()));
                             let connect = Connect {
                                 socket: Some(socket),
                                 keep_alive: true,

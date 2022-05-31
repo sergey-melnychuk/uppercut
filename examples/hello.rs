@@ -7,17 +7,31 @@ use uppercut::config::Config;
 use uppercut::core::System;
 use uppercut::pool::ThreadPool;
 
-#[derive(Debug)]
-struct Message(usize, Sender<usize>);
+#[derive(Debug, Clone)]
+struct Message(usize);
 
-#[derive(Default)]
-struct State;
+struct State {
+    tx: Sender<usize>,
+}
+
+impl State {
+    fn new(tx: Sender<usize>) -> Self {
+        Self { tx }
+    }
+}
 
 impl AnyActor for State {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(msg) = envelope.message.downcast_ref::<Message>() {
             sender.log(&format!("received: {:?}", msg));
-            msg.1.send(msg.0).unwrap();
+
+            if sender.me() == "copy" {
+                self.tx.send(msg.0).unwrap();
+            } else {
+                sender.spawn("copy", &|| Box::new(State::new(self.tx.clone())));
+                sender.send("copy", Envelope::of(msg.clone()));
+            }
+            sender.stop(&sender.myself());
         }
     }
 }
@@ -33,10 +47,9 @@ fn main() {
     let sys = System::new("basic", "localhost", &cfg);
     let run = sys.run(&tp).unwrap();
 
-    run.spawn_default::<State>("state");
-
     let (tx, rx) = channel();
-    run.send("state", Envelope::of(Message(42, tx)));
+    run.spawn("state", || Box::new(State::new(tx)));
+    run.send("state", Envelope::of(Message(42)));
 
     let timeout = Duration::from_secs(3);
     let result = rx.recv_timeout(timeout).unwrap();

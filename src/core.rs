@@ -42,10 +42,10 @@ impl AnySender for Local {
         self.tx.send(action).unwrap();
     }
 
-    fn spawn(&mut self, address: &str, f: fn() -> Actor) {
+    fn spawn(&mut self, address: &str, f: &(dyn Fn() -> Actor)) {
         let action = Action::Spawn {
             tag: address.to_string(),
-            actor: f(),
+            actor: (*f)(),
         };
         self.tx.send(action).unwrap();
     }
