@@ -14,11 +14,10 @@ pub trait AnyActor: Send {
 
 pub trait AnySender {
     fn me(&self) -> &str;
-    fn myself(&self) -> String;
-    fn send(&mut self, address: &str, envelope: Envelope);
-    fn spawn(&mut self, address: &str, f: &(dyn Fn() -> Actor));
-    fn delay(&mut self, address: &str, envelope: Envelope, duration: Duration);
-    fn stop(&mut self, address: &str);
+    fn send(&self, address: &str, envelope: Envelope);
+    fn spawn(&self, address: &str, f: Box<dyn FnOnce() -> Actor>);
+    fn delay(&self, address: &str, envelope: Envelope, duration: Duration);
+    fn stop(&self, address: &str);
     fn log(&mut self, message: &str);
     fn metric(&mut self, name: &str, value: f64);
     fn now(&self) -> SystemTime;
