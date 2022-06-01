@@ -14,9 +14,9 @@ use crate::monitor::{LoggerEntry, Meta, MetricEntry, SchedulerMetrics};
 use crate::pool::{Runnable, ThreadPool};
 
 #[cfg(feature = "remote")]
-use crate::remote::client::{Client, StartClient};
+use crate::remote::client::{self, Client};
 #[cfg(feature = "remote")]
-use crate::remote::server::{Server, StartServer};
+use crate::remote::server::{self, Server};
 
 #[allow(dead_code)] // CLIENT const is unused when feature 'remote' is not enabled
 const CLIENT: &str = "$CLIENT";

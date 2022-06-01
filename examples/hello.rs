@@ -28,7 +28,8 @@ impl AnyActor for State {
             if sender.me() == "copy" {
                 self.tx.send(msg.0).unwrap();
             } else {
-                sender.spawn("copy", &|| Box::new(State::new(self.tx.clone())));
+                let tx = self.tx.clone();
+                sender.spawn("copy", Box::new(|| Box::new(State::new(tx))));
                 sender.send("copy", Envelope::of(msg.clone()));
             }
             sender.stop(&sender.myself());

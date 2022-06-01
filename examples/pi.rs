@@ -48,7 +48,7 @@ impl AnyActor for Master {
             self.result = Some(result.clone());
             for idx in 0..self.size {
                 let id = format!("worker-{}", idx);
-                sender.spawn(&id, &|| Box::new(Worker::default()));
+                sender.spawn(&id, Box::new(|| Box::new(Worker::default())));
                 let task = Envelope::of(Task(*throws)).from(sender.me());
                 sender.send(&id, task);
             }

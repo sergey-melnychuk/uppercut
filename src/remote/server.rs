@@ -13,17 +13,7 @@ use crate::error::Error;
 use crate::remote::packet::Packet;
 
 #[derive(Debug)]
-pub struct StartServer;
-
-#[derive(Debug)]
-struct Loop;
-
-#[derive(Debug)]
-struct Connect {
-    socket: Option<TcpStream>,
-    keep_alive: bool,
-    config: ServerConfig,
-}
+pub(crate) struct Loop;
 
 #[derive(Debug)]
 struct Work {
@@ -98,14 +88,17 @@ impl AnyActor for Server {
                                     Interest::READABLE | Interest::WRITABLE,
                                 )
                                 .unwrap();
-                            let tag = Server::tag(sender.me(), self.counter);
-                            sender.spawn(&tag, &|| Box::new(Connection::default()));
-                            let connect = Connect {
-                                socket: Some(socket),
+                            let connection = Connection {
+                                socket,
                                 keep_alive: true,
-                                config: self.config.clone(),
+                                recv_buf: ByteStream::with_capacity(self.config.recv_buffer_size),
+                                send_buf: ByteStream::with_capacity(self.config.send_buffer_size),
+                                is_open: true,
+                                can_read: false,
+                                can_write: false,
                             };
-                            sender.send(&tag, Envelope::of(connect));
+                            let tag = Server::tag(sender.me(), self.counter);
+                            sender.spawn(&tag, Box::new(move || Box::new(connection)));
                         }
                     }
                     token => {
@@ -118,17 +111,13 @@ impl AnyActor for Server {
                     }
                 }
             }
-            let me = sender.myself();
-            sender.send(&me, Envelope::of(Loop));
-        } else if envelope.message.downcast_ref::<StartServer>().is_some() {
-            let me = sender.myself();
-            sender.send(&me, Envelope::of(Loop));
+            sender.send(sender.me(), Envelope::of(Loop));
         }
     }
 }
 
 struct Connection {
-    socket: Option<TcpStream>,
+    socket: TcpStream,
     is_open: bool,
     keep_alive: bool,
     recv_buf: ByteStream,
@@ -143,42 +132,21 @@ impl Connection {
             if !self.keep_alive {
                 self.is_open = true;
             } else {
-                self.socket = None;
-                let me = sender.myself();
-                sender.stop(&me);
+                sender.stop(sender.me());
             }
         }
         self.is_open
     }
 }
 
-impl Default for Connection {
-    fn default() -> Self {
-        Connection {
-            socket: None,
-            is_open: true,
-            keep_alive: true,
-            recv_buf: ByteStream::with_capacity(0),
-            send_buf: ByteStream::with_capacity(0),
-            can_read: false,
-            can_write: false,
-        }
-    }
-}
-
 impl AnyActor for Connection {
-    fn receive(&mut self, mut envelope: Envelope, sender: &mut dyn AnySender) {
-        if let Some(connect) = envelope.message.downcast_mut::<Connect>() {
-            self.socket = connect.socket.take();
-            self.keep_alive = connect.keep_alive;
-            self.recv_buf = ByteStream::with_capacity(connect.config.recv_buffer_size);
-            self.send_buf = ByteStream::with_capacity(connect.config.send_buffer_size);
-        } else if let Some(work) = envelope.message.downcast_ref::<Work>() {
+    fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
+        if let Some(work) = envelope.message.downcast_ref::<Work>() {
             let mut buffer = [0u8; 1024];
             self.can_read = work.is_readable;
             self.can_write = self.can_write || work.is_writable;
             if self.can_read {
-                match self.socket.as_ref().unwrap().read(&mut buffer[..]) {
+                match self.socket.read(&mut buffer[..]) {
                     Ok(0) | Err(_) => {
                         self.is_open = false;
                     }
@@ -201,7 +169,7 @@ impl AnyActor for Connection {
                 }
 
                 if let Ok(Some(packet)) = r {
-                    let mut host = self.socket.as_ref().unwrap().peer_addr().unwrap();
+                    let mut host = self.socket.peer_addr().unwrap();
                     host.set_port(packet.port);
                     let from = format!("{}@{}", packet.from, host);
 
@@ -219,12 +187,7 @@ impl AnyActor for Connection {
             }
 
             if self.can_write && self.send_buf.len() > 0 {
-                match self
-                    .socket
-                    .as_ref()
-                    .unwrap()
-                    .write_all(self.send_buf.as_ref())
-                {
+                match self.socket.write_all(self.send_buf.as_ref()) {
                     Ok(_) => {
                         self.send_buf.clear();
                     }
