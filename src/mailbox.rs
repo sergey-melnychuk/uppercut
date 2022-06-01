@@ -24,8 +24,8 @@ impl Mailbox {
         }
     }
 
-    pub(crate) fn put(&mut self, mut queue: Vec<Envelope>) {
-        self.queue.append(&mut queue);
+    pub(crate) fn put(&mut self, envelope: Envelope) {
+        self.queue.push(envelope);
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -52,9 +52,7 @@ mod tests {
     fn test_put_and_get() {
         const N: usize = 10;
         let mut mbox = Mailbox::new(THROUGHPUT, CAPACITY);
-        let queue = (0..N).map(|_| make_envelope()).collect::<Vec<_>>();
-
-        mbox.put(queue);
+        (0..N).map(|_| make_envelope()).for_each(|e| mbox.put(e));
         assert_eq!(N, mbox.len());
 
         let taken = mbox.get();

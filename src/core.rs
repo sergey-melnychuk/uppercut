@@ -31,22 +31,19 @@ impl AnySender for Local {
 
     fn send(&self, address: &str, mut envelope: Envelope) {
         let tag = adjust_remote_address(address, &mut envelope).to_string();
-        let action = Action::Queue {
-            tag,
-            queue: vec![envelope],
-        };
+        let action = Action::Queue { tag, envelope };
         self.tx.send(action).unwrap();
     }
 
-    fn spawn(&mut self, address: &str, f: &(dyn Fn() -> Actor)) {
+    fn spawn(&self, address: &str, f: Box<dyn FnOnce() -> Actor>) {
         let action = Action::Spawn {
             tag: address.to_string(),
-            actor: (*f)(),
+            actor: f(),
         };
         self.tx.send(action).unwrap();
     }
 
-    fn delay(&mut self, address: &str, mut envelope: Envelope, duration: Duration) {
+    fn delay(&self, address: &str, mut envelope: Envelope, duration: Duration) {
         let at = Instant::now().add(duration);
         let tag = adjust_remote_address(address, &mut envelope).to_string();
         let entry = Entry { at, tag, envelope };
@@ -54,7 +51,7 @@ impl AnySender for Local {
         self.tx.send(action).unwrap();
     }
 
-    fn stop(&mut self, address: &str) {
+    fn stop(&self, address: &str) {
         let action = Action::Stop {
             tag: address.to_string(),
         };
@@ -164,7 +161,7 @@ enum Action {
     },
     Queue {
         tag: String,
-        queue: Vec<Envelope>,
+        envelope: Envelope,
     },
     Delay {
         entry: Entry,
@@ -247,10 +244,10 @@ impl<'a> Runtime<'a> {
             let server = Server::listen(&config.remote.listening, &config.remote.server)?;
             let port = server.port();
             run.spawn(SERVER, move || Box::new(server));
-            run.send(SERVER, Envelope::of(StartServer));
+            run.send(SERVER, Envelope::of(server::Loop));
             let client = Client::new(port, &config.remote.client);
             run.spawn(CLIENT, move || Box::new(client));
-            run.send(CLIENT, Envelope::of(StartClient));
+            run.send(CLIENT, Envelope::of(client::Loop));
         }
 
         Ok(run)
@@ -294,10 +291,7 @@ pub struct Run<'a> {
 impl<'a> Run<'a> {
     pub fn send(&self, address: &str, mut envelope: Envelope) {
         let tag = adjust_remote_address(address, &mut envelope).to_string();
-        let action = Action::Queue {
-            tag,
-            queue: vec![envelope],
-        };
+        let action = Action::Queue { tag, envelope };
         self.sender.send(action).unwrap();
     }
 
@@ -432,12 +426,12 @@ fn event_loop(
                         events_tx.send(event).unwrap();
                     }
                 }
-                Action::Queue { tag, queue } if scheduler.active.contains(&tag) => {
+                Action::Queue { tag, envelope } if scheduler.active.contains(&tag) => {
                     scheduler_metrics.queues += 1;
-                    scheduler_metrics.messages += queue.len() as u64;
+                    scheduler_metrics.messages += 1;
 
                     let mailbox = scheduler.queue.get_mut(&tag).unwrap();
-                    mailbox.put(queue);
+                    mailbox.put(envelope);
 
                     if let Some(actor) = scheduler.actors.remove(&tag) {
                         let event = Event::Mail {
@@ -501,10 +495,7 @@ fn event_loop(
             .unwrap_or_default()
         {
             if let Some(Entry { tag, envelope, .. }) = scheduler.tasks.pop() {
-                let action = Action::Queue {
-                    tag,
-                    queue: vec![envelope],
-                };
+                let action = Action::Queue { tag, envelope };
                 actions_tx.send(action).unwrap();
             }
         }
