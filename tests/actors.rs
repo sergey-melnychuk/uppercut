@@ -52,7 +52,7 @@ impl AnyActor for Counter {
                 }
                 CounterProtocol::Get => {
                     let env = Envelope::of(CounterProtocol::Inc);
-                    sender.send(&sender.myself(), env);
+                    sender.send(sender.me(), env);
                 }
             }
         }

@@ -83,7 +83,7 @@ impl AnyActor for Worker {
             }
             let done = Envelope::of(Done(hits, *size)).from(sender.me());
             sender.send(&envelope.from, done);
-            sender.stop(&sender.myself());
+            sender.stop(sender.me());
         }
     }
 }
