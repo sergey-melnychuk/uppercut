@@ -98,8 +98,7 @@ impl Client {
     }
 
     pub fn put(&mut self, addr: &str, payload: &[u8]) -> usize {
-        let target = addr.to_string();
-        let id = self.destinations.get(&target).unwrap();
+        let id = self.destinations.get(addr).unwrap();
         self.connections.get_mut(id).unwrap().send_buf.put(payload)
     }
 }
@@ -162,17 +161,13 @@ impl Connection {
 }
 
 #[derive(Debug)]
-pub struct StartClient;
-
-#[derive(Debug)]
-struct Loop;
+pub(crate) struct Loop;
 
 impl AnyActor for Client {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if envelope.message.downcast_ref::<Loop>().is_some() {
             self.poll(Duration::from_millis(1));
-            let me = sender.myself();
-            sender.send(&me, envelope);
+            sender.send(sender.me(), envelope);
         } else if let Some(payload) = envelope.message.downcast_ref::<Vec<u8>>() {
             let (to, host) = split_address(envelope.to);
             let from = envelope.from.to_owned();
@@ -197,9 +192,6 @@ impl AnyActor for Client {
                     payload.len()
                 ));
             }
-        } else if envelope.message.downcast_ref::<StartClient>().is_some() {
-            let me = sender.myself();
-            sender.send(&me, Envelope::of(Loop));
         }
     }
 }
