@@ -60,7 +60,7 @@ impl AnyActor for Root {
                         ));
                         let trigger = Fan::Trigger { size: self.size };
                         let env = Envelope::of(trigger).from(sender.me());
-                        sender.send(&sender.myself(), env);
+                        sender.send(sender.me(), env);
                         self.epoch += 1;
                     }
                 }
@@ -158,7 +158,7 @@ impl AnyActor for Periodic {
             }
             let env = Envelope::of(Tick { at: Instant::now() }).from(sender.me());
             let delay = Duration::from_millis(10);
-            sender.delay(&sender.myself(), env, delay);
+            sender.delay(sender.me(), env, delay);
         }
     }
 }
@@ -174,7 +174,7 @@ impl AnyActor for PingPong {
             if self.count % 1000 == 0 {
                 sender.log(&format!(
                     "Actor '{}' (count={}) received message '{}'",
-                    sender.myself(),
+                    sender.me(),
                     self.count,
                     s
                 ));

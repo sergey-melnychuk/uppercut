@@ -26,16 +26,15 @@ fn counter(b: &mut Bencher) {
     impl AnyActor for Test {
         fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
             if let Some(p) = envelope.message.downcast_ref::<Protocol>() {
-                let me = sender.myself();
                 match p {
                     Protocol::Init(limit, tx) => {
                         self.limit = *limit;
                         self.tx = Some(tx.to_owned());
-                        sender.send(&me, Envelope::of(Protocol::Hit).from(&me));
+                        sender.send(sender.me(), Envelope::of(Protocol::Hit).from(sender.me()));
                     }
                     Protocol::Hit if self.count < self.limit => {
                         self.count += 1;
-                        sender.send(&me, Envelope::of(Protocol::Hit).from(&me));
+                        sender.send(sender.me(), Envelope::of(Protocol::Hit).from(sender.me()));
                     }
                     Protocol::Hit => {
                         self.tx.take().unwrap().send(self.count).unwrap();

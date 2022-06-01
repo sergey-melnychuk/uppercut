@@ -29,11 +29,7 @@ impl AnySender for Local {
         &self.tag
     }
 
-    fn myself(&self) -> String {
-        self.tag.clone()
-    }
-
-    fn send(&mut self, address: &str, mut envelope: Envelope) {
+    fn send(&self, address: &str, mut envelope: Envelope) {
         let tag = adjust_remote_address(address, &mut envelope).to_string();
         let action = Action::Queue {
             tag,

@@ -238,8 +238,8 @@ impl AnyActor for Agent {
                 }
                 Message::Stop => {
                     warn!("tag={} event=stop", sender.me());
-                    sender.stop(&sender.myself());
-                    let down: Vec<u8> = Down(sender.myself()).into();
+                    sender.stop(sender.me());
+                    let down: Vec<u8> = Down(sender.me().to_string()).into();
                     sender.send(&self.countdown, Envelope::of(down));
                 }
                 _ => (),
@@ -261,8 +261,7 @@ impl AnyActor for Agent {
                 });
             }
             let delay = Duration::from_millis(self.tick);
-            let myself = sender.myself();
-            sender.delay(&myself, Envelope::of(Message::Tick), delay);
+            sender.delay(sender.me(), Envelope::of(Message::Tick), delay);
         } else if let Some(Message::Init(horizon, tick, period, pings, countdown)) =
             envelope.message.downcast_ref::<Message>()
         {
@@ -277,7 +276,7 @@ impl AnyActor for Agent {
             self.tick = *tick;
             self.period = *period;
             self.countdown = countdown.to_owned();
-            sender.send(&sender.myself(), Envelope::of(Message::Tick));
+            sender.send(sender.me(), Envelope::of(Message::Tick));
 
             pings.into_iter().for_each(|tag| {
                 let ping: Vec<u8> = Message::Ping(tag.clone(), self.beat).into();
@@ -322,7 +321,7 @@ impl AnyActor for Countdown {
             self.n -= 1;
             if self.n == 0 {
                 self.tx.as_ref().unwrap().send(()).unwrap();
-                sender.stop(&sender.myself());
+                sender.stop(sender.me());
             }
         }
     }

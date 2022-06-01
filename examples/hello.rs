@@ -32,7 +32,7 @@ impl AnyActor for State {
                 sender.spawn("copy", Box::new(|| Box::new(State::new(tx))));
                 sender.send("copy", Envelope::of(msg.clone()));
             }
-            sender.stop(&sender.myself());
+            sender.stop(sender.me());
         }
     }
 }
