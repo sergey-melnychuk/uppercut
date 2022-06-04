@@ -327,7 +327,7 @@ impl AnyActor for Countdown {
     }
 }
 
-// RUST_LOG=info cargo run --release --example gossip --features remote
+// RUST_LOG=info cargo run --release --example gossip
 fn main() {
     env_logger::init();
     let pool = ThreadPool::new(6);
