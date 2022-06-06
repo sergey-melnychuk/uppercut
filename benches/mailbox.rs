@@ -40,13 +40,12 @@ fn deq(b: &mut Bencher) {
         map.insert(0, VecDeque::with_capacity(CAPACITY));
         let deq = map.get_mut(&0).unwrap();
         for x in 0..CAPACITY {
-            deq.push_front(x);
+            deq.push_back(x);
         }
 
-        let selected = deq.split_off(deq.len() - PREFIX);
-        let q = selected.into_iter().rev().collect::<Vec<usize>>();
+        let selected = deq.drain(..PREFIX).collect::<Vec<_>>();
         assert_eq!(
-            q,
+            selected,
             vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
         );
         assert_eq!(map.remove(&0).unwrap().len(), CAPACITY - PREFIX);

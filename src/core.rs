@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::ops::Add;
 use std::panic::{self, AssertUnwindSafe};
 use std::time::{Duration, Instant, SystemTime};
@@ -9,7 +9,6 @@ use crossbeam_channel::{unbounded, Receiver, SendError, Sender};
 use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::config::{Config, SchedulerConfig};
 use crate::error::Error;
-use crate::mailbox::Mailbox;
 use crate::monitor::{LoggerEntry, Meta, MetricEntry, SchedulerMetrics};
 use crate::pool::{Runnable, ThreadPool};
 
@@ -117,7 +116,7 @@ impl Local {
 struct Scheduler {
     config: SchedulerConfig,
     actors: HashMap<String, Actor>,
-    queue: HashMap<String, Mailbox>,
+    queue: HashMap<String, VecDeque<Envelope>>,
     tasks: BinaryHeap<Entry>,
     active: HashSet<String>,
 }
@@ -139,7 +138,7 @@ enum Event {
     Mail {
         tag: String,
         actor: Actor,
-        queue: Vec<Envelope>,
+        envelope: Envelope,
     },
     Stop {
         tag: String,
@@ -345,19 +344,15 @@ fn worker_loop(tx: Sender<Action>, rx: Receiver<Event>) {
                 Event::Mail {
                     tag,
                     mut actor,
-                    queue,
+                    envelope,
                 } => {
                     sender.tag = tag.clone();
-                    let mut ok = true;
-                    for envelope in queue.into_iter() {
-                        let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                            actor.receive(envelope, &mut sender);
-                        }));
-                        if result.is_err() {
-                            actor.on_fail(result.err().unwrap(), &mut sender);
-                            ok = false;
-                            break;
-                        }
+                    let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                        actor.receive(envelope, &mut sender);
+                    }));
+                    let ok = result.is_ok();
+                    if result.is_err() {
+                        actor.on_fail(result.err().unwrap(), &mut sender);
                     }
                     let sent = tx.send(Action::Return { tag, actor, ok });
                     if sent.is_err() {
@@ -406,16 +401,16 @@ fn event_loop(
                         continue 'main;
                     }
                     scheduler_metrics.returns += 1;
-                    let mailbox = scheduler.queue.get_mut(&tag).unwrap();
-                    if mailbox.is_empty() {
-                        scheduler.actors.insert(tag, actor);
-                    } else {
+
+                    if let Some(envelope) = scheduler.queue.get_mut(&tag).unwrap().pop_front() {
                         let event = Event::Mail {
                             tag,
                             actor,
-                            queue: mailbox.get(),
+                            envelope,
                         };
                         events_tx.send(event).unwrap();
+                    } else {
+                        scheduler.actors.insert(tag, actor);
                     }
                 }
                 Action::Return { tag, actor, ok } => {
@@ -429,15 +424,13 @@ fn event_loop(
                 Action::Queue { tag, envelope } if scheduler.active.contains(&tag) => {
                     scheduler_metrics.queues += 1;
                     scheduler_metrics.messages += 1;
-
-                    let mailbox = scheduler.queue.get_mut(&tag).unwrap();
-                    mailbox.put(envelope);
-
+                    scheduler.queue.get_mut(&tag).unwrap().push_back(envelope);
                     if let Some(actor) = scheduler.actors.remove(&tag) {
+                        let envelope = scheduler.queue.get_mut(&tag).unwrap().pop_front().unwrap();
                         let event = Event::Mail {
                             tag,
                             actor,
-                            queue: mailbox.get(),
+                            envelope,
                         };
                         events_tx.send(event).unwrap();
                     }
@@ -446,11 +439,10 @@ fn event_loop(
                     scheduler_metrics.spawns += 1;
                     scheduler.active.insert(tag.clone());
                     scheduler.actors.insert(tag.clone(), actor);
-                    let mailbox = Mailbox::new(
-                        scheduler.config.actor_throughput,
-                        scheduler.config.default_mailbox_capacity,
+                    scheduler.queue.insert(
+                        tag.clone(),
+                        VecDeque::with_capacity(scheduler.config.default_mailbox_capacity),
                     );
-                    scheduler.queue.insert(tag.clone(), mailbox);
                 }
                 Action::Delay { entry } => {
                     scheduler_metrics.delays += 1;

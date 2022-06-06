@@ -5,7 +5,5 @@ pub mod error;
 pub mod monitor;
 pub mod pool;
 
-mod mailbox;
-
 #[cfg(feature = "remote")]
 pub(crate) mod remote;
