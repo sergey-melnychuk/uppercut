@@ -23,7 +23,7 @@ remote = ["mio/os-poll", "mio/tcp"]
 [dependencies]
 mio = { version = "0.7.9", features = ["os-poll", "tcp"] }
 core_affinity = "0.5.10"
-crossbeam-channel = "0.4.4"
+crossbeam-channel = "0.5.4"
 parsed = "0.2.1"
 bytes = "0.6.0"
 get_if_addrs = { version = "0.5", optional = true }
