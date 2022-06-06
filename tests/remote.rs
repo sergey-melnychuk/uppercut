@@ -1,4 +1,3 @@
-#[cfg(feature = "remote")]
 mod ping_test {
     use std::fmt::Debug;
     use std::sync::mpsc::Sender;
@@ -33,7 +32,6 @@ mod ping_test {
     }
 }
 
-#[cfg(feature = "remote")]
 #[test]
 fn test_remote_ping_pong() {
     use crate::ping_test::{Forward, Probe, Tester};
@@ -96,7 +94,6 @@ fn test_remote_ping_pong() {
     }
 }
 
-#[cfg(feature = "remote")]
 mod reply_test {
     use std::fmt::Debug;
     use std::sync::mpsc::Sender;
@@ -152,7 +149,6 @@ mod reply_test {
     }
 }
 
-#[cfg(feature = "remote")]
 #[test]
 fn test_remote_reply() {
     use crate::reply_test::*;

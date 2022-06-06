@@ -12,15 +12,10 @@ use crate::error::Error;
 use crate::monitor::{LoggerEntry, Meta, MetricEntry, SchedulerMetrics};
 use crate::pool::{Runnable, ThreadPool};
 
-#[cfg(feature = "remote")]
 use crate::remote::client::{self, Client};
-#[cfg(feature = "remote")]
 use crate::remote::server::{self, Server};
 
-#[allow(dead_code)] // CLIENT const is unused when feature 'remote' is not enabled
 const CLIENT: &str = "$CLIENT";
-
-#[allow(dead_code)] // SERVER const is unused when feature 'remote' is not enabled
 const SERVER: &str = "$SERVER";
 
 impl AnySender for Local {
@@ -238,7 +233,6 @@ impl<'a> Runtime<'a> {
         );
         let run = Run { sender, pool };
 
-        #[cfg(feature = "remote")]
         if config.remote.enabled {
             let server = Server::listen(&config.remote.listening, &config.remote.server)?;
             let port = server.port();
@@ -568,10 +562,9 @@ fn start_actor_runtime(
     });
 }
 
-fn adjust_remote_address<'a>(address: &'a str, _envelope: &'a mut Envelope) -> &'a str {
-    #[cfg(feature = "remote")]
+fn adjust_remote_address<'a>(address: &'a str, envelope: &'a mut Envelope) -> &'a str {
     if address.contains('@') {
-        _envelope.to = address.to_string();
+        envelope.to = address.to_string();
         return CLIENT;
     }
     address

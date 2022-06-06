@@ -16,17 +16,16 @@ panic = "unwind"
 panic = "unwind"
 
 [features]
-default = ["remote"]
+default = []
 host = ["get_if_addrs"]
-remote = ["mio/os-poll", "mio/tcp"]
 
 [dependencies]
-mio = { version = "0.7.9", features = ["os-poll", "tcp"] }
+mio = { version = "0.8.3", features = ["os-poll", "net"] }
 core_affinity = "0.5.10"
 crossbeam-channel = "0.5.4"
-parsed = "0.2.1"
-bytes = "0.6.0"
-get_if_addrs = { version = "0.5", optional = true }
+parsed = "0.3.0"
+bytes = "1.1.0"
+get_if_addrs = { version = "0.5.3", optional = true }
 
 [dev-dependencies]
 bencher = "0.1.5"
