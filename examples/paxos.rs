@@ -3,9 +3,7 @@ use std::time::Duration;
 
 extern crate log;
 use log::{debug, info};
-
-extern crate chrono;
-use chrono::Local;
+use env_logger::fmt::TimestampPrecision;
 
 extern crate bytes;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -243,8 +241,7 @@ impl AnyActor for Agent {
         if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let msg: Message = buf.to_owned().into();
             info!(
-                "{} actor={} from={} message/parse={:?}",
-                time(),
+                "actor={} from={} message/parse={:?}",
                 sender.me(),
                 envelope.from,
                 msg
@@ -293,7 +290,7 @@ impl AnyActor for Client {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let message: Message = buf.to_owned().into();
-            info!("{} actor={} message={:?}", time(), sender.me(), message);
+            info!("actor={} message={:?}", sender.me(), message);
             match message {
                 Message::Selected { seq: _, val } => {
                     self.log.push(val);
@@ -302,7 +299,7 @@ impl AnyActor for Client {
                         let idx: usize = self.id as usize % self.nodes.len();
                         let target = self.nodes.get(idx).unwrap();
                         let msg = Message::Request { val: self.val };
-                        info!("{} actor={} retry/message={:?}", time(), sender.me(), msg);
+                        info!("actor={} retry/message={:?}", sender.me(), msg);
                         let buf: Vec<u8> = msg.into();
                         let envelope = Envelope::of(buf).from(sender.me());
                         sender.send(target, envelope);
@@ -327,8 +324,7 @@ impl AnyActor for Client {
             self.nodes = nodes.to_owned();
             self.sender = Some(tx.to_owned());
             info!(
-                "{} actor={} val={} seq={:?}",
-                time(),
+                "actor={} val={} seq={:?}",
                 sender.me(),
                 self.val,
                 self.log
@@ -344,14 +340,11 @@ impl AnyActor for Client {
     }
 }
 
-fn time() -> String {
-    let date = Local::now();
-    date.format("%Y-%m-%d %H:%M:%S%.3f").to_string()
-}
-
 // RUST_LOG=info cargo run --release --example paxos
 fn main() {
-    env_logger::init();
+    env_logger::builder()
+        .format_timestamp(Some(TimestampPrecision::Millis))
+        .init();
     let pool = ThreadPool::new(6);
 
     let mut config = Config::default();
