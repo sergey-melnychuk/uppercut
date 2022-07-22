@@ -1,5 +1,7 @@
 extern crate log;
+use std::collections::HashSet;
 use log::{debug, info, warn};
+use env_logger::fmt::TimestampPrecision;
 
 extern crate bytes;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -25,6 +27,7 @@ struct Agent {
     tag: String,
     beat: u64,
     peers: Vec<Peer>,
+    down: HashSet<String>,
     horizon: u64,
     period: u64,
     tick: u64,
@@ -38,6 +41,7 @@ impl Default for Agent {
             tag: Default::default(),
             beat: Default::default(),
             peers: Default::default(),
+            down: Default::default(),
             horizon: Default::default(),
             period: Default::default(),
             tick: Default::default(),
@@ -71,11 +75,16 @@ impl Agent {
         }
     }
 
-    fn detect(&self, time: u64) -> Vec<Event> {
+    fn detect(&mut self, time: u64) -> Vec<Event> {
         let mut events = Vec::new();
         for peer in self.peers.iter() {
             if peer.seen + self.horizon < time {
-                events.push(Event::Out(peer.tag.clone()));
+                if !self.down.contains(&peer.tag) {
+                    // If a peer stays down, do not report it every detection.
+                    // TODO Handle case when a peer gets back up again.
+                    self.down.insert(peer.tag.clone());                    
+                    events.push(Event::Out(peer.tag.clone()));
+                }
             }
         }
         events
@@ -209,7 +218,7 @@ impl AnyActor for Agent {
                 Message::Gossip(peers) => {
                     let events = self.accept(time, peers);
                     for e in events {
-                        info!("\ttag={} event={:?}", sender.me(), e);
+                        warn!("\ttag={} event={:?}", sender.me(), e);
                     }
                 }
                 Message::Ping(me, beat) => {
@@ -221,7 +230,7 @@ impl AnyActor for Agent {
                         sender.send(&envelope.from, Envelope::of(pong).from(sender.me()));
                         let events = self.accept(time, vec![(envelope.from, beat)]);
                         for e in events {
-                            info!("\ttag={} event={:?}", sender.me(), e);
+                            warn!("\ttag={} event={:?}", sender.me(), e);
                         }
                     }
                 }
@@ -232,7 +241,7 @@ impl AnyActor for Agent {
                     if !is_self && !is_known {
                         let events = self.accept(time, vec![(envelope.from, beat)]);
                         for e in events {
-                            info!("\ttag={} event={:?}", sender.me(), e);
+                            warn!("\ttag={} event={:?}", sender.me(), e);
                         }
                     }
                 }
@@ -250,7 +259,7 @@ impl AnyActor for Agent {
             if self.beat % self.period == 0 {
                 let events = self.detect(time);
                 for e in events {
-                    info!("\ttag={} event={:?}", sender.me(), e);
+                    warn!("\ttag={} event={:?}", sender.me(), e);
                 }
                 let gossip = self.gossip(time);
                 info!("tag={} gossip: {:?}", sender.me(), gossip);
@@ -327,14 +336,17 @@ impl AnyActor for Countdown {
     }
 }
 
-// RUST_LOG=info cargo run --release --example gossip
+// RUST_LOG=warn cargo run --release --example gossip
 fn main() {
-    env_logger::init();
+    env_logger::builder()
+        .format_timestamp(Some(TimestampPrecision::Millis))
+        .init();
     let pool = ThreadPool::new(6);
 
     let mut config = Config::default();
     config.scheduler.actor_worker_threads = 1;
     config.scheduler.extra_worker_threads = 0;
+    config.scheduler.logging_enabled = false;
     config.remote.enabled = true;
 
     let runs: Vec<Run> = {
