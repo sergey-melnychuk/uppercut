@@ -345,7 +345,7 @@ fn worker_loop(tx: Sender<Action>, rx: Receiver<Event>) {
                         actor.receive(envelope, &mut sender);
                     }));
                     let ok = result.is_ok();
-                    if result.is_err() {
+                    if !ok {
                         actor.on_fail(result.err().unwrap(), &mut sender);
                     }
                     let sent = tx.send(Action::Return { tag, actor, ok });
@@ -548,7 +548,7 @@ fn start_actor_runtime(
     let background = pool.link();
     pool.submit(move || {
         event_loop(
-            actions_rx,
+            actions_rx.clone(),
             actions_tx,
             events_tx.clone(),
             scheduler,
@@ -558,6 +558,12 @@ fn start_actor_runtime(
         );
         for _ in 0..thread_count {
             events_tx.send(Event::Shutdown).unwrap();
+        }
+        while let Ok(_) = actions_rx.recv() {
+            // Drain remaining actions sent from worker threads while they 
+            // (worker threads) are being shut down to avoid race condition
+            // caused by actions_rx being dropped and worker threads that are
+            // still running keep failing to send actions into closed channel.
         }
     });
 }
