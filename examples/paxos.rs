@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 extern crate log;
-use log::{debug, info};
 use env_logger::fmt::TimestampPrecision;
+use log::{debug, info};
 
 extern crate bytes;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -31,10 +31,10 @@ enum Message {
     Empty,
 }
 
-impl Into<Vec<u8>> for Message {
-    fn into(self) -> Vec<u8> {
+impl From<Message> for Vec<u8> {
+    fn from(message: Message) -> Self {
         let mut buf = BytesMut::with_capacity(1 + 8 + 8);
-        match self {
+        match message {
             Message::Request { val } => {
                 buf.put_u8(1);
                 buf.put_u64(val);
@@ -246,7 +246,7 @@ impl AnyActor for Agent {
                 envelope.from,
                 msg
             );
-            self.handle(msg.clone(), envelope.from)
+            self.handle(msg, envelope.from)
                 .into_iter()
                 .for_each(|(target, msg)| {
                     info!("\t{} sending to {}: {:?}", sender.me(), target, msg);
@@ -291,29 +291,26 @@ impl AnyActor for Client {
         if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
             let message: Message = buf.to_owned().into();
             info!("actor={} message={:?}", sender.me(), message);
-            match message {
-                Message::Selected { seq: _, val } => {
-                    self.log.push(val);
-                    self.done |= val == self.val;
-                    if !self.done {
-                        let idx: usize = self.id as usize % self.nodes.len();
-                        let target = self.nodes.get(idx).unwrap();
-                        let msg = Message::Request { val: self.val };
-                        info!("actor={} retry/message={:?}", sender.me(), msg);
-                        let buf: Vec<u8> = msg.into();
-                        let envelope = Envelope::of(buf).from(sender.me());
-                        sender.send(target, envelope);
-                    }
-
-                    if self.log.len() == self.n as usize {
-                        self.sender
-                            .as_ref()
-                            .unwrap()
-                            .send((sender.me().to_string(), self.log.clone()))
-                            .unwrap()
-                    }
+            if let Message::Selected { seq: _, val } = message {
+                self.log.push(val);
+                self.done |= val == self.val;
+                if !self.done {
+                    let idx: usize = self.id as usize % self.nodes.len();
+                    let target = self.nodes.get(idx).unwrap();
+                    let msg = Message::Request { val: self.val };
+                    info!("actor={} retry/message={:?}", sender.me(), msg);
+                    let buf: Vec<u8> = msg.into();
+                    let envelope = Envelope::of(buf).from(sender.me());
+                    sender.send(target, envelope);
                 }
-                _ => (),
+
+                if self.log.len() == self.n as usize {
+                    self.sender
+                        .as_ref()
+                        .unwrap()
+                        .send((sender.me().to_string(), self.log.clone()))
+                        .unwrap()
+                }
             }
         } else if let Some(setup) = envelope.message.downcast_ref::<Setup>() {
             let Setup(n, id, val, nodes, tx) = setup;
@@ -323,12 +320,7 @@ impl AnyActor for Client {
             self.done = false;
             self.nodes = nodes.to_owned();
             self.sender = Some(tx.to_owned());
-            info!(
-                "actor={} val={} seq={:?}",
-                sender.me(),
-                self.val,
-                self.log
-            );
+            info!("actor={} val={} seq={:?}", sender.me(), self.val, self.log);
 
             let idx: usize = self.id as usize % self.nodes.len();
             let target = self.nodes.get(idx).unwrap();

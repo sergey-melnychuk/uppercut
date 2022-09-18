@@ -90,7 +90,7 @@ fn test_remote_ping_pong() {
     if let Ok(received) = result {
         assert_eq!(received, payload);
     } else {
-        assert!(false, "Probe did not receive forwarded payload");
+        panic!("Probe did not receive forwarded payload");
     }
 }
 
@@ -126,8 +126,9 @@ mod reply_test {
                 sender.send(&probe.target, env);
             } else if let Some(buf) = envelope.message.downcast_ref::<Vec<u8>>() {
                 sender.log("response received");
-                let message = String::from_utf8(buf.clone()).unwrap_or("<undefined>".to_string());
-                self.tx.as_ref().unwrap().send(message.clone()).unwrap();
+                let message =
+                    String::from_utf8(buf.clone()).unwrap_or_else(|_| "<undefined>".to_string());
+                self.tx.as_ref().unwrap().send(message).unwrap();
             }
         }
     }
@@ -204,6 +205,6 @@ fn test_remote_reply() {
     if let Ok(received) = result {
         assert_eq!(received, message);
     } else {
-        assert!(false, "Probe did not receive forwarded payload");
+        panic!("Probe did not receive forwarded payload");
     }
 }

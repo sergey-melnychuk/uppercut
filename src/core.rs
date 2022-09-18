@@ -559,8 +559,8 @@ fn start_actor_runtime(
         for _ in 0..thread_count {
             events_tx.send(Event::Shutdown).unwrap();
         }
-        while let Ok(_) = actions_rx.recv() {
-            // Drain remaining actions sent from worker threads while they 
+        while actions_rx.recv().is_ok() {
+            // Drain remaining actions sent from worker threads while they
             // (worker threads) are being shut down to avoid race condition
             // caused by actions_rx being dropped and worker threads that are
             // still running keep failing to send actions into closed channel.

@@ -1,7 +1,7 @@
 extern crate log;
-use std::collections::HashSet;
-use log::{debug, info, warn};
 use env_logger::fmt::TimestampPrecision;
+use log::{debug, info, warn};
+use std::collections::HashSet;
 
 extern crate bytes;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -66,7 +66,7 @@ impl Agent {
             .map(|peer| (peer.tag.clone(), peer.beat))
             .collect();
         if peers.len() < 2 {
-            return vec![(self.tag.clone(), self.beat)];
+            vec![(self.tag.clone(), self.beat)]
         } else {
             vec![
                 peers[self.beat as usize % peers.len()].clone(),
@@ -78,13 +78,11 @@ impl Agent {
     fn detect(&mut self, time: u64) -> Vec<Event> {
         let mut events = Vec::new();
         for peer in self.peers.iter() {
-            if peer.seen + self.horizon < time {
-                if !self.down.contains(&peer.tag) {
-                    // If a peer stays down, do not report it every detection.
-                    // TODO Handle case when a peer gets back up again.
-                    self.down.insert(peer.tag.clone());                    
-                    events.push(Event::Out(peer.tag.clone()));
-                }
+            if peer.seen + self.horizon < time && !self.down.contains(&peer.tag) {
+                // If a peer stays down, do not report it every detection.
+                // TODO Handle case when a peer gets back up again.
+                self.down.insert(peer.tag.clone());
+                events.push(Event::Out(peer.tag.clone()));
             }
         }
         events
@@ -129,10 +127,10 @@ enum Message {
     Init(u64, u64, u64, Vec<String>, String),
 }
 
-impl Into<Vec<u8>> for Message {
-    fn into(self) -> Vec<u8> {
+impl From<Message> for Vec<u8> {
+    fn from(message: Message) -> Self {
         let mut buf = BytesMut::new();
-        match self {
+        match message {
             Message::Ping(target, beat) => {
                 buf.put_u8(1);
                 buf.put_u8(target.len() as u8);
@@ -287,7 +285,7 @@ impl AnyActor for Agent {
             self.countdown = countdown.to_owned();
             sender.send(sender.me(), Envelope::of(Message::Tick));
 
-            pings.into_iter().for_each(|tag| {
+            pings.iter().for_each(|tag| {
                 let ping: Vec<u8> = Message::Ping(tag.clone(), self.beat).into();
                 sender.send(tag, Envelope::of(ping).from(sender.me()));
             })
@@ -307,9 +305,9 @@ struct Setup(usize, Sender<()>);
 #[derive(Debug)]
 struct Down(String);
 
-impl Into<Vec<u8>> for Down {
-    fn into(self) -> Vec<u8> {
-        self.0.into_bytes()
+impl From<Down> for Vec<u8> {
+    fn from(down: Down) -> Self {
+        down.0.into_bytes()
     }
 }
 
@@ -394,6 +392,6 @@ fn main() {
         run.delay(&tag, Envelope::of(stop), delay);
     }
 
-    let _ = rx.recv().unwrap(); // wait until all 3 peers are down
+    rx.recv().unwrap(); // wait until all 3 peers are down
     runs.into_iter().for_each(|run| run.shutdown());
 }

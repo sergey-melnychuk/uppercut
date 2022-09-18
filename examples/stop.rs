@@ -49,7 +49,7 @@ fn main() {
     let (tx, rx) = channel();
     run.send("x", Envelope::of(Message(Some(42), tx.clone())));
     run.stop("x");
-    run.send("x", Envelope::of(Message(Some(100500), tx.clone())));
+    run.send("x", Envelope::of(Message(Some(100500), tx)));
 
     println!("recv: {}", rx.recv().unwrap());
     sleep(Duration::from_secs(3));
