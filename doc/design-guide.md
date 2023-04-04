@@ -211,6 +211,6 @@ configuration remains, thus can be restarted any required number of attempts.
 1. Hewitt, Carl; Bishop, Peter; Steiger, Richard (1973). ["A Universal Modular Actor Formalism for Artificial Intelligence". IJCAI.](
 https://www.ijcai.org/Proceedings/73/Papers/027B.pdf)
 
-1. Hewitt, Meijer and Szyperski: The Actor Model (everything you wanted to know, but were afraid to ask) [video](https://channel9.msdn.com/Shows/Going+Deep/Hewitt-Meijer-and-Szyperski-The-Actor-Model-everything-you-wanted-to-know-but-were-afraid-to-ask)
+1. Hewitt, Meijer and Szyperski: The Actor Model (everything you wanted to know, but were afraid to ask) [video](https://www.youtube.com/watch?v=7erJ1DV_Tlo)
 
 1. Wikipedia: [Actor Model](https://en.wikipedia.org/wiki/Actor_model)
