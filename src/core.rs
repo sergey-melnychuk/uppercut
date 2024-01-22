@@ -60,7 +60,7 @@ impl AnySender for Local {
         let now = self.now();
         self.metrics
             .entry(name.to_string())
-            .or_insert_with(Vec::default)
+            .or_default()
             .push((now, value));
     }
 
@@ -189,14 +189,14 @@ impl PartialEq for Entry {
 
 impl Ord for Entry {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        // reverse ordering for min-heap
+        self.at.cmp(&other.at).reverse()
     }
 }
 
 impl PartialOrd for Entry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        // Reverse ordering is required to turn max-heap (BinaryHeap) into min-heap.
-        Some(self.at.cmp(&other.at).reverse())
+        Some(self.cmp(other))
     }
 }
 
@@ -299,7 +299,7 @@ impl<'a> Run<'a> {
     pub fn spawn_default<T: 'static + AnyActor + Send + Default>(&self, address: &str) {
         let action = Action::Spawn {
             tag: address.to_string(),
-            actor: Box::new(T::default()),
+            actor: Box::<T>::default(),
         };
         self.sender.send(action).unwrap();
     }

@@ -21,7 +21,7 @@ pub struct MetricEntry {
     pub val: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct SchedulerMetrics {
     pub name: String,
     pub at: u64,
@@ -43,19 +43,7 @@ impl SchedulerMetrics {
     pub fn named(name: String) -> Self {
         Self {
             name,
-            at: 0,
-            ticks: 0,
-            miss: 0,
-            hit: 0,
-            messages: 0,
-            queues: 0,
-            returns: 0,
-            spawns: 0,
-            delays: 0,
-            stops: 0,
-            drops: 0,
-            failures: 0,
-            actors: 0,
+            ..Default::default()
         }
     }
 
