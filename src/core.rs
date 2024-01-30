@@ -516,7 +516,7 @@ fn event_loop(
         }
 
         if scheduler.config.eager_shutdown_enabled && scheduler.active.is_empty() {
-            // Shutdown if there are not running actor (no progress can be made in such system).
+            // Shutdown if there are no running actors (no progress can be made in such system).
             break 'main;
         }
     }
