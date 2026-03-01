@@ -6,7 +6,7 @@ use uppercut::core::System;
 use uppercut::pool::ThreadPool;
 
 extern crate clap;
-use clap::{App, Arg};
+use clap::{Arg, Command};
 
 #[derive(Default)]
 struct PingPong;
@@ -32,25 +32,15 @@ impl AnyActor for PingPong {
 // cargo run --example ping -- --listen 0.0.0.0:10001
 // cargo run --example ping -- --listen 0.0.0.0:10002 --peer ping@127.0.0.1:10001
 fn main() {
-    let matches = App::new("pingpong")
-        .arg(
-            Arg::with_name("listen")
-                .long("listen")
-                .short("l")
-                .required(true)
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("peer")
-                .long("peer")
-                .short("p")
-                .required(false)
-                .takes_value(true),
-        )
+    let matches = Command::new("pingpong")
+        .arg(Arg::new("listen").long("listen").short('l').required(true))
+        .arg(Arg::new("peer").long("peer").short('p').required(false))
         .get_matches();
 
-    let listen = matches.value_of("listen").expect("'listen' is missing");
-    let peer = matches.value_of("peer");
+    let listen = matches
+        .get_one::<String>("listen")
+        .expect("'listen' is missing");
+    let peer = matches.get_one::<String>("peer");
 
     let cores = std::cmp::max(4, num_cpus::get());
     let pool = ThreadPool::new(cores + 2 + 1);

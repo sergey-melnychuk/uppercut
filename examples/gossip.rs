@@ -184,7 +184,6 @@ impl From<Vec<u8>> for Message {
             3 => {
                 let k = buf.get_u8();
                 let peers: Vec<(String, u64)> = (0..k)
-                    .into_iter()
                     .map(|_| {
                         let n = buf.get_u8();
                         let v = buf.copy_to_bytes(n as usize).to_vec();
@@ -255,7 +254,7 @@ impl AnyActor for Agent {
         } else if let Some(Message::Tick) = envelope.message.downcast_ref::<Message>() {
             self.beat += 1;
             debug!("tag={} beat={} msg=Tick", sender.me(), self.beat);
-            if self.beat % self.period == 0 {
+            if self.beat.is_multiple_of(self.period) {
                 let events = self.detect(time);
                 for e in events {
                     warn!("\ttag={} event={e:?}", sender.me());
@@ -364,7 +363,7 @@ fn main() {
         vec![run1, run2, run3]
     };
 
-    let r = runs.get(0).unwrap();
+    let r = runs.first().unwrap();
     r.spawn_default::<Countdown>("countdown");
     let (tx, rx) = bounded(1);
     r.send("countdown", Envelope::of(Setup(runs.len(), tx)));

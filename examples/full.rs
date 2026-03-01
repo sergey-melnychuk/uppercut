@@ -151,7 +151,7 @@ impl AnyActor for Periodic {
                 self.timings.insert(d, 1);
             }
             self.counter += 1;
-            if self.counter % 1000 == 0 {
+            if self.counter.is_multiple_of(1000) {
                 let (min, max, p50, p99) = self.report();
                 sender.log(&format!("min={} p50={} p99={} max={}", min, p50, p99, max));
                 self.timings.clear();
@@ -171,7 +171,7 @@ struct PingPong {
 impl AnyActor for PingPong {
     fn receive(&mut self, envelope: Envelope, sender: &mut dyn AnySender) {
         if let Some(s) = envelope.message.downcast_ref::<String>() {
-            if self.count % 1000 == 0 {
+            if self.count.is_multiple_of(1000) {
                 sender.log(&format!(
                     "Actor '{}' (count={}) received message '{}'",
                     sender.me(),

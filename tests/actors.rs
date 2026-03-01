@@ -145,7 +145,7 @@ impl AnyActor for Replier {
 #[test]
 fn message_order_perceived() -> Result<(), RecvTimeoutError> {
     let n = 10;
-    let seq: Vec<usize> = (1..=n).into_iter().collect();
+    let seq: Vec<usize> = (1..=n).collect();
     with_run(seq, |run| {
         let (tx, rx) = channel();
         run.spawn("test", || Box::new(Replier(tx)));
@@ -191,7 +191,7 @@ impl AnyActor for Echo {
 #[test]
 fn delayed_messages_ordering() -> Result<(), RecvTimeoutError> {
     const N: usize = 3;
-    let seq: Vec<usize> = (0..N).into_iter().collect();
+    let seq: Vec<usize> = (0..N).collect();
     let expected: Vec<(usize, usize)> = seq.iter().map(|x| (*x, *x)).collect();
     with_run(expected, |run| {
         let (tx, rx) = channel();

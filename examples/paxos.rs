@@ -363,7 +363,6 @@ fn main() {
     const N: usize = 3;
     let peers: Vec<String> = (0..N)
         .zip(9001..(9001 + N))
-        .into_iter()
         .map(|(i, port)| format!("node-{}@127.0.0.1:{}", i, port))
         .collect();
 
