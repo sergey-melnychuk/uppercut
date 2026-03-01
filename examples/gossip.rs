@@ -51,6 +51,7 @@ impl Default for Agent {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 enum Event {
     New(String),
@@ -239,7 +240,7 @@ impl AnyActor for Agent {
                     if !is_self && !is_known {
                         let events = self.accept(time, vec![(envelope.from, beat)]);
                         for e in events {
-                            warn!("\ttag={} event={:?}", sender.me(), e);
+                            warn!("\ttag={} event={e:?}", sender.me());
                         }
                     }
                 }
@@ -257,7 +258,7 @@ impl AnyActor for Agent {
             if self.beat % self.period == 0 {
                 let events = self.detect(time);
                 for e in events {
-                    warn!("\ttag={} event={:?}", sender.me(), e);
+                    warn!("\ttag={} event={e:?}", sender.me());
                 }
                 let gossip = self.gossip(time);
                 info!("tag={} gossip: {:?}", sender.me(), gossip);

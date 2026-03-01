@@ -78,6 +78,7 @@ impl AnyActor for Server {
                 match event.token() {
                     Token(0) => {
                         while let Ok((mut socket, _remote)) = self.socket.accept() {
+                            let _ = socket.set_nodelay(true);
                             self.counter += 1;
                             let token = Token(self.counter);
                             self.poll

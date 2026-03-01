@@ -71,6 +71,10 @@ impl Client {
             }
 
             if event.is_writable() {
+                if !connection.nodelay_set {
+                    let _ = connection.socket.as_ref().unwrap().set_nodelay(true);
+                    connection.nodelay_set = true;
+                }
                 connection.send();
                 connection.send_buf.pull();
                 connection.is_open = !event.is_write_closed();
@@ -107,6 +111,7 @@ struct Connection {
     target: String,
     socket: Option<TcpStream>,
     is_open: bool,
+    nodelay_set: bool,
     recv_buf: ByteStream,
     send_buf: ByteStream,
 }
@@ -117,6 +122,7 @@ impl Connection {
             target,
             socket: Some(socket),
             is_open: true,
+            nodelay_set: false,
             recv_buf: ByteStream::with_capacity(config.recv_buffer_size),
             send_buf: ByteStream::with_capacity(config.send_buffer_size),
         }

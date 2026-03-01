@@ -208,7 +208,7 @@ struct Runtime<'a> {
 }
 
 impl<'a> Runtime<'a> {
-    fn new(name: String, host: String, pool: &'a ThreadPool, config: Config) -> Runtime {
+    fn new(name: String, host: String, pool: &'a ThreadPool, config: Config) -> Runtime<'a> {
         Runtime {
             name,
             host,
@@ -263,7 +263,7 @@ impl System {
         }
     }
 
-    pub fn run(self, pool: &ThreadPool) -> Result<Run, Error> {
+    pub fn run(self, pool: &ThreadPool) -> Result<Run<'_>, Error> {
         if pool.size() < self.config.scheduler.total_threads_required() {
             Err(Error::ThreadPoolTooSmall {
                 required: self.config.scheduler.total_threads_required(),
@@ -332,35 +332,36 @@ impl<'a> Run<'a> {
 fn worker_loop(tx: Sender<Action>, rx: Receiver<Event>) {
     let mut sender = Local::new(tx.clone());
     loop {
-        let event = rx.try_recv();
-        if let Ok(e) = event {
-            match e {
-                Event::Mail {
-                    tag,
-                    mut actor,
-                    envelope,
-                } => {
-                    sender.tag = tag.clone();
-                    let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                        actor.receive(envelope, &mut sender);
-                    }));
-                    let ok = result.is_ok();
-                    if !ok {
-                        actor.on_fail(result.err().unwrap(), &mut sender);
-                    }
-                    let sent = tx.send(Action::Return { tag, actor, ok });
-                    if sent.is_err() {
-                        break;
-                    }
+        let event = match rx.recv() {
+            Ok(e) => e,
+            Err(_) => break,
+        };
+        match event {
+            Event::Mail {
+                tag,
+                mut actor,
+                envelope,
+            } => {
+                sender.tag = tag.clone();
+                let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                    actor.receive(envelope, &mut sender);
+                }));
+                let ok = result.is_ok();
+                if !ok {
+                    actor.on_fail(result.err().unwrap(), &mut sender);
                 }
-                Event::Stop { tag, actor } => {
-                    sender.tag = tag;
-                    actor.on_stop(&mut sender);
+                let sent = tx.send(Action::Return { tag, actor, ok });
+                if sent.is_err() {
+                    break;
                 }
-                Event::Shutdown => break,
             }
-            sender.drain(&tx).unwrap();
+            Event::Stop { tag, actor } => {
+                sender.tag = tag;
+                actor.on_stop(&mut sender);
+            }
+            Event::Shutdown => break,
         }
+        sender.drain(&tx).unwrap();
     }
 }
 
