@@ -20,20 +20,20 @@ default = []
 host = ["get_if_addrs"]
 
 [dependencies]
-mio = { version = "0.8.3", features = ["os-poll", "net"] }
-core_affinity = "0.5.10"
-crossbeam-channel = "0.5.4"
+mio = { version = "0.8", features = ["os-poll", "net"] }
+core_affinity = "0.5"
+crossbeam-channel = "0.5"
 parsed = "0.3.0"
-bytes = "1.1.0"
-get_if_addrs = { version = "0.5.3", optional = true }
+bytes = "1.1"
+get_if_addrs = { version = "0.5", optional = true }
 
 [dev-dependencies]
 bencher = "0.1.5"
-num_cpus = "1.13.0"
-clap = "2.33.1"
-rand = "0.7.3"
+num_cpus = "1.13"
+clap = "4.5"
+rand = "0.7"
 log = "0.4"
-env_logger = "0.8.2"
+env_logger = "0.8"
 
 [[bench]]
 name = "workload"
