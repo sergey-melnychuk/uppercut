@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::ops::Add;
 use std::panic::{self, AssertUnwindSafe};
 use std::time::{Duration, Instant, SystemTime};
@@ -113,7 +113,6 @@ struct Scheduler {
     actors: HashMap<String, Actor>,
     queue: HashMap<String, VecDeque<Envelope>>,
     tasks: BinaryHeap<Entry>,
-    active: HashSet<String>,
 }
 
 impl Scheduler {
@@ -123,7 +122,6 @@ impl Scheduler {
             actors: HashMap::default(),
             queue: HashMap::default(),
             tasks: BinaryHeap::default(),
-            active: HashSet::default(),
         }
     }
 }
@@ -219,7 +217,6 @@ impl<'a> Runtime<'a> {
 
     fn start(self) -> Result<Run<'a>, Error> {
         let (pool, config) = (self.pool, self.config);
-        let events = unbounded();
         let actions = unbounded();
         let sender = actions.0.clone();
 
@@ -228,7 +225,6 @@ impl<'a> Runtime<'a> {
             self.host,
             pool,
             config.scheduler,
-            events,
             actions,
         );
         let run = Run { sender, pool };
@@ -368,12 +364,20 @@ fn worker_loop(tx: Sender<Action>, rx: Receiver<Event>) {
 fn event_loop(
     actions_rx: Receiver<Action>,
     actions_tx: Sender<Action>,
-    events_tx: Sender<Event>,
+    events_txs: Vec<Sender<Event>>,
     mut scheduler: Scheduler,
     background: impl Fn(Runnable),
     name: String,
     host: String,
 ) {
+    let n_workers = events_txs.len();
+    let worker_for = |tag: &str| -> usize {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        tag.hash(&mut h);
+        (h.finish() as usize) % n_workers
+    };
     let mut scheduler_metrics = SchedulerMetrics::named(name.clone());
     let mut start = Instant::now();
     let mut logs = Vec::with_capacity(1024);
@@ -383,91 +387,95 @@ fn event_loop(
     let max_timeout_millis: u64 = 256;
     let mut timeout_millis = max_timeout_millis;
     'main: loop {
-        let received = actions_rx.recv_timeout(Duration::from_millis(timeout_millis));
+        let effective_timeout = scheduler
+            .tasks
+            .peek()
+            .map(|e| e.at.saturating_duration_since(Instant::now()))
+            .unwrap_or(Duration::from_millis(timeout_millis))
+            .min(Duration::from_millis(timeout_millis));
+        let received = actions_rx.recv_timeout(effective_timeout);
         if let Ok(action) = received {
             timeout_millis = std::cmp::max(min_timeout_millis, timeout_millis / 2);
-            scheduler_metrics.hit += 1;
-            match action {
-                Action::Return { tag, actor, ok } if scheduler.active.contains(&tag) => {
-                    if !ok {
-                        scheduler_metrics.failures += 1;
-                        scheduler.active.remove(&tag);
-                        scheduler.queue.remove(&tag);
-                        continue 'main;
-                    }
-                    scheduler_metrics.returns += 1;
+            let mut pending = Some(action);
+            while let Some(action) = pending {
+                scheduler_metrics.hit += 1;
+                match action {
+                    Action::Return { tag, actor, ok } if scheduler.queue.contains_key(&tag) => {
+                        if !ok {
+                            scheduler_metrics.failures += 1;
+                            scheduler.queue.remove(&tag);
+                        } else {
+                            scheduler_metrics.returns += 1;
 
-                    if let Some(envelope) = scheduler.queue.get_mut(&tag).unwrap().pop_front() {
-                        let event = Event::Mail {
-                            tag,
-                            actor,
-                            envelope,
-                        };
-                        events_tx.send(event).unwrap();
-                    } else {
-                        scheduler.actors.insert(tag, actor);
+                            if let Some(envelope) = scheduler.queue.get_mut(&tag).unwrap().pop_front() {
+                                let w = worker_for(&tag);
+                                let event = Event::Mail { tag, actor, envelope };
+                                events_txs[w].send(event).unwrap();
+                            } else {
+                                scheduler.actors.insert(tag, actor);
+                            }
+                        }
+                    }
+                    Action::Return { tag, actor, ok } => {
+                        // Returned actor was stopped before (removed from active set).
+                        scheduler.queue.remove(&tag);
+                        if ok {
+                            let w = worker_for(&tag);
+                            let event = Event::Stop { tag, actor };
+                            events_txs[w].send(event).unwrap();
+                        }
+                    }
+                    Action::Queue { tag, envelope } if scheduler.queue.contains_key(&tag) => {
+                        scheduler_metrics.queues += 1;
+                        scheduler_metrics.messages += 1;
+                        if let Some(actor) = scheduler.actors.remove(&tag) {
+                            // Actor is idle — dispatch directly without touching the queue.
+                            let w = worker_for(&tag);
+                            let event = Event::Mail { tag, actor, envelope };
+                            events_txs[w].send(event).unwrap();
+                        } else {
+                            scheduler.queue.get_mut(&tag).unwrap().push_back(envelope);
+                        }
+                    }
+                    Action::Spawn { tag, actor } if !scheduler.queue.contains_key(&tag) => {
+                        scheduler_metrics.spawns += 1;
+                        scheduler.actors.insert(tag.clone(), actor);
+                        scheduler.queue.insert(
+                            tag.clone(),
+                            VecDeque::with_capacity(scheduler.config.default_mailbox_capacity),
+                        );
+                    }
+                    Action::Delay { entry } => {
+                        scheduler_metrics.delays += 1;
+                        scheduler.tasks.push(entry);
+                    }
+                    Action::Stop { tag } if scheduler.queue.contains_key(&tag) => {
+                        scheduler_metrics.stops += 1;
+                        scheduler.queue.remove(&tag);
+                        if scheduler.actors.contains_key(&tag) {
+                            let actor = scheduler.actors.remove(&tag).unwrap();
+                            let w = worker_for(&tag);
+                            let event = Event::Stop { tag, actor };
+                            events_txs[w].send(event).unwrap();
+                        }
+                    }
+                    Action::Logs { tag, logs: entries } => {
+                        logs.push((tag, entries));
+                    }
+                    Action::Metrics { map } => {
+                        for (name, mut entries) in map {
+                            metrics
+                                .entry(name)
+                                .or_insert_with(Vec::default)
+                                .append(&mut entries);
+                        }
+                    }
+                    Action::Shutdown => break 'main,
+                    _ => {
+                        scheduler_metrics.drops += 1;
                     }
                 }
-                Action::Return { tag, actor, ok } => {
-                    // Returned actor was stopped before (removed from active set).
-                    scheduler.queue.remove(&tag);
-                    if ok {
-                        let event = Event::Stop { tag, actor };
-                        events_tx.send(event).unwrap();
-                    }
-                }
-                Action::Queue { tag, envelope } if scheduler.active.contains(&tag) => {
-                    scheduler_metrics.queues += 1;
-                    scheduler_metrics.messages += 1;
-                    scheduler.queue.get_mut(&tag).unwrap().push_back(envelope);
-                    if let Some(actor) = scheduler.actors.remove(&tag) {
-                        let envelope = scheduler.queue.get_mut(&tag).unwrap().pop_front().unwrap();
-                        let event = Event::Mail {
-                            tag,
-                            actor,
-                            envelope,
-                        };
-                        events_tx.send(event).unwrap();
-                    }
-                }
-                Action::Spawn { tag, actor } if !scheduler.active.contains(&tag) => {
-                    scheduler_metrics.spawns += 1;
-                    scheduler.active.insert(tag.clone());
-                    scheduler.actors.insert(tag.clone(), actor);
-                    scheduler.queue.insert(
-                        tag.clone(),
-                        VecDeque::with_capacity(scheduler.config.default_mailbox_capacity),
-                    );
-                }
-                Action::Delay { entry } => {
-                    scheduler_metrics.delays += 1;
-                    scheduler.tasks.push(entry);
-                }
-                Action::Stop { tag } if scheduler.active.contains(&tag) => {
-                    scheduler_metrics.stops += 1;
-                    scheduler.active.remove(&tag);
-                    scheduler.queue.remove(&tag);
-                    if scheduler.actors.contains_key(&tag) {
-                        let actor = scheduler.actors.remove(&tag).unwrap();
-                        let event = Event::Stop { tag, actor };
-                        events_tx.send(event).unwrap();
-                    }
-                }
-                Action::Logs { tag, logs: entries } => {
-                    logs.push((tag, entries));
-                }
-                Action::Metrics { map } => {
-                    for (name, mut entries) in map {
-                        metrics
-                            .entry(name)
-                            .or_insert_with(Vec::default)
-                            .append(&mut entries);
-                    }
-                }
-                Action::Shutdown => break 'main,
-                _ => {
-                    scheduler_metrics.drops += 1;
-                }
+                pending = actions_rx.try_recv().ok();
             }
         } else {
             timeout_millis = std::cmp::min(timeout_millis * 2, max_timeout_millis);
@@ -494,7 +502,7 @@ fn event_loop(
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64;
-            scheduler_metrics.actors = scheduler.active.len() as u64;
+            scheduler_metrics.actors = scheduler.queue.len() as u64;
 
             if scheduler.config.metric_reporting_enabled {
                 report_metrics(
@@ -516,10 +524,13 @@ fn event_loop(
             start = Instant::now();
         }
 
-        if scheduler.config.eager_shutdown_enabled && scheduler.active.is_empty() {
+        if scheduler.config.eager_shutdown_enabled && scheduler.queue.is_empty() {
             // Shutdown if there are no running actors (no progress can be made in such system).
             break 'main;
         }
+    }
+    for tx in &events_txs {
+        tx.send(Event::Shutdown).unwrap();
     }
 }
 
@@ -528,21 +539,20 @@ fn start_actor_runtime(
     host: String,
     pool: &ThreadPool,
     scheduler_config: SchedulerConfig,
-    events: (Sender<Event>, Receiver<Event>),
     actions: (Sender<Action>, Receiver<Action>),
 ) {
     let (actions_tx, actions_rx) = actions;
-    let (events_tx, events_rx) = events;
 
     let scheduler = Scheduler::with_config(&scheduler_config);
 
     let thread_count = scheduler.config.actor_worker_threads;
+    let mut events_txs = Vec::with_capacity(thread_count);
     for _ in 0..thread_count {
-        let rx = events_rx.clone();
+        let (events_tx, events_rx) = unbounded();
+        events_txs.push(events_tx);
         let tx = actions_tx.clone();
-
         pool.submit(move || {
-            worker_loop(tx, rx);
+            worker_loop(tx, events_rx);
         });
     }
 
@@ -551,15 +561,12 @@ fn start_actor_runtime(
         event_loop(
             actions_rx.clone(),
             actions_tx,
-            events_tx.clone(),
+            events_txs,
             scheduler,
             background,
             name,
             host,
         );
-        for _ in 0..thread_count {
-            events_tx.send(Event::Shutdown).unwrap();
-        }
         while actions_rx.recv().is_ok() {
             // Drain remaining actions sent from worker threads while they
             // (worker threads) are being shut down to avoid race condition
