@@ -361,6 +361,14 @@ fn worker_loop(tx: Sender<Action>, rx: Receiver<Event>) {
     }
 }
 
+fn worker_for(tag: &str, n: usize) -> usize {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    tag.hash(&mut h);
+    (h.finish() as usize) % n
+}
+
 fn event_loop(
     actions_rx: Receiver<Action>,
     actions_tx: Sender<Action>,
@@ -371,13 +379,6 @@ fn event_loop(
     host: String,
 ) {
     let n_workers = events_txs.len();
-    let worker_for = |tag: &str| -> usize {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut h = DefaultHasher::new();
-        tag.hash(&mut h);
-        (h.finish() as usize) % n_workers
-    };
     let mut scheduler_metrics = SchedulerMetrics::named(name.clone());
     let mut start = Instant::now();
     let mut logs = Vec::with_capacity(1024);
@@ -408,7 +409,7 @@ fn event_loop(
                             scheduler_metrics.returns += 1;
 
                             if let Some(envelope) = scheduler.queue.get_mut(&tag).unwrap().pop_front() {
-                                let w = worker_for(&tag);
+                                let w = worker_for(&tag, n_workers);
                                 let event = Event::Mail { tag, actor, envelope };
                                 events_txs[w].send(event).unwrap();
                             } else {
@@ -420,7 +421,7 @@ fn event_loop(
                         // Returned actor was stopped before (removed from active set).
                         scheduler.queue.remove(&tag);
                         if ok {
-                            let w = worker_for(&tag);
+                            let w = worker_for(&tag, n_workers);
                             let event = Event::Stop { tag, actor };
                             events_txs[w].send(event).unwrap();
                         }
@@ -430,7 +431,7 @@ fn event_loop(
                         scheduler_metrics.messages += 1;
                         if let Some(actor) = scheduler.actors.remove(&tag) {
                             // Actor is idle — dispatch directly without touching the queue.
-                            let w = worker_for(&tag);
+                            let w = worker_for(&tag, n_workers);
                             let event = Event::Mail { tag, actor, envelope };
                             events_txs[w].send(event).unwrap();
                         } else {
@@ -454,7 +455,7 @@ fn event_loop(
                         scheduler.queue.remove(&tag);
                         if scheduler.actors.contains_key(&tag) {
                             let actor = scheduler.actors.remove(&tag).unwrap();
-                            let w = worker_for(&tag);
+                            let w = worker_for(&tag, n_workers);
                             let event = Event::Stop { tag, actor };
                             events_txs[w].send(event).unwrap();
                         }

@@ -66,3 +66,68 @@ inner `actors.remove()` is two lookups. Since `active` is a `HashSet<String>` an
 a `HashMap<String, Actor>`, you could eliminate `active` entirely — presence in `queue`
 (inserted at spawn, removed at stop) serves the same purpose, saving a redundant set lookup
 per message.
+
+---
+
+## 6. Adaptive affinity dispatch (not yet applied)
+
+**Context:** item #4 (per-worker channels) uses tag-hash affinity — the same actor always
+routes to the same worker, preserving L1/L2 cache locality. This breaks down when one actor
+receives a disproportionate share of messages (hotspot), saturating its assigned worker while
+others sit idle.
+
+**Approach — least-loaded with affinity spill:**
+
+Track two extra structures in `event_loop`:
+
+```rust
+let mut inflight: Vec<usize> = vec![0; n_workers];  // messages currently in each worker's channel
+let mut assignment: HashMap<String, usize> = HashMap::new();  // tag → worker while inflight
+```
+
+Replace `worker_for` with a function that prefers the hash-assigned worker unless it is more
+than one message ahead of the least-loaded worker:
+
+```rust
+fn choose_worker(tag: &str, inflight: &[usize]) -> usize {
+    let n = inflight.len();
+    // hash-preferred worker for affinity
+    let preferred = /* hash(tag) % n */;
+    let min_load = *inflight.iter().min().unwrap_or(&0);
+    if inflight[preferred] > min_load + 1 {
+        // spill: pick least-loaded worker
+        inflight.iter().enumerate()
+            .min_by_key(|(_, &c)| c)
+            .map(|(i, _)| i)
+            .unwrap_or(preferred)
+    } else {
+        preferred  // stay affine
+    }
+}
+```
+
+On every `Event::Mail` dispatch, increment `inflight[w]` and record `assignment[tag] = w`.
+On every `Action::Return`, look up `assignment[tag]`, decrement `inflight[w]`, and remove the
+entry. `Event::Stop` dispatches are **not** tracked (no `Return` follows them).
+
+**Measured overhead vs pure hash affinity (balanced workloads):**
+
+| Benchmark      | Pure hash affinity | Adaptive affinity | Delta  |
+|----------------|--------------------|-------------------|--------|
+| high_throughput | 9,713,606 ns      | 12,271,433 ns     | +26%   |
+| parallel_actors | 4,320,210 ns      | 5,885,664 ns      | +36%   |
+| delay_latency   | 1,289,278 ns      | 1,291,000 ns      | ~0%    |
+
+The overhead comes from `HashMap::insert/remove` per dispatch and an `O(n_workers)` scan in
+`choose_worker`. For balanced workloads (equal message rates across actors) the spill path
+never fires, so the cost is pure overhead with no benefit.
+
+**When to apply:** only worth enabling if profiling shows a specific actor pinned to one
+worker while other workers are measurably idle. A cheaper mitigation for mild imbalance is
+simply increasing `actor_worker_threads` so the hash distributes over more buckets.
+
+**Possible optimisation before applying:** replace `HashMap<String, usize>` with a `usize`
+field embedded directly in a per-actor wrapper struct (eliminates the hash map), and maintain
+a running `min_inflight` variable updated on every increment/decrement (eliminates the
+`O(n_workers)` scan). That would reduce the overhead to a handful of integer operations per
+dispatch.
