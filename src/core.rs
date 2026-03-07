@@ -10,6 +10,8 @@ use crate::api::{Actor, AnyActor, AnySender, Envelope};
 use crate::config::{Config, SchedulerConfig};
 use crate::error::Error;
 use crate::monitor::{LoggerEntry, Meta, MetricEntry, SchedulerMetrics};
+#[cfg(feature = "actor-stats")]
+use crate::monitor::ActorStats;
 use crate::pool::{Runnable, ThreadPool};
 
 use crate::remote::client::{self, Client};
@@ -113,6 +115,8 @@ struct Scheduler {
     actors: HashMap<String, Actor>,
     queue: HashMap<String, VecDeque<Envelope>>,
     tasks: BinaryHeap<Entry>,
+    #[cfg(feature = "actor-stats")]
+    stats: HashMap<String, ActorStats>,
 }
 
 impl Scheduler {
@@ -122,6 +126,8 @@ impl Scheduler {
             actors: HashMap::default(),
             queue: HashMap::default(),
             tasks: BinaryHeap::default(),
+            #[cfg(feature = "actor-stats")]
+            stats: HashMap::default(),
         }
     }
 }
@@ -146,6 +152,7 @@ enum Action {
         tag: String,
         actor: Actor,
         ok: bool,
+        elapsed_us: u64,
     },
     Spawn {
         tag: String,
@@ -339,14 +346,20 @@ fn worker_loop(tx: Sender<Action>, rx: Receiver<Event>) {
                 envelope,
             } => {
                 sender.tag = tag.clone();
+                #[cfg(feature = "actor-stats")]
+                let t0 = Instant::now();
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
                     actor.receive(envelope, &mut sender);
                 }));
+                #[cfg(feature = "actor-stats")]
+                let elapsed_us = t0.elapsed().as_micros() as u64;
+                #[cfg(not(feature = "actor-stats"))]
+                let elapsed_us = 0u64;
                 let ok = result.is_ok();
                 if !ok {
                     actor.on_fail(result.err().unwrap(), &mut sender);
                 }
-                let sent = tx.send(Action::Return { tag, actor, ok });
+                let sent = tx.send(Action::Return { tag, actor, ok, elapsed_us });
                 if sent.is_err() {
                     break;
                 }
@@ -401,7 +414,11 @@ fn event_loop(
             while let Some(action) = pending {
                 scheduler_metrics.hit += 1;
                 match action {
-                    Action::Return { tag, actor, ok } if scheduler.queue.contains_key(&tag) => {
+                    Action::Return { tag, actor, ok, elapsed_us: _elapsed_us } if scheduler.queue.contains_key(&tag) => {
+                        #[cfg(feature = "actor-stats")]
+                        if let Some(s) = scheduler.stats.get_mut(&tag) {
+                            s.record_elapsed(_elapsed_us);
+                        }
                         if !ok {
                             scheduler_metrics.failures += 1;
                             scheduler.queue.remove(&tag);
@@ -417,7 +434,7 @@ fn event_loop(
                             }
                         }
                     }
-                    Action::Return { tag, actor, ok } => {
+                    Action::Return { tag, actor, ok, .. } => {
                         // Returned actor was stopped before (removed from active set).
                         scheduler.queue.remove(&tag);
                         if ok {
@@ -436,6 +453,13 @@ fn event_loop(
                             events_txs[w].send(event).unwrap();
                         } else {
                             scheduler.queue.get_mut(&tag).unwrap().push_back(envelope);
+                            #[cfg(feature = "actor-stats")]
+                            if let Some(s) = scheduler.stats.get_mut(&tag) {
+                                let depth = scheduler.queue.get(&tag).unwrap().len();
+                                if depth > s.mailbox_depth_max {
+                                    s.mailbox_depth_max = depth;
+                                }
+                            }
                         }
                     }
                     Action::Spawn { tag, actor } if !scheduler.queue.contains_key(&tag) => {
@@ -445,6 +469,8 @@ fn event_loop(
                             tag.clone(),
                             VecDeque::with_capacity(scheduler.config.default_mailbox_capacity),
                         );
+                        #[cfg(feature = "actor-stats")]
+                        scheduler.stats.insert(tag.clone(), ActorStats::new(tag));
                     }
                     Action::Delay { entry } => {
                         scheduler_metrics.delays += 1;
@@ -453,6 +479,8 @@ fn event_loop(
                     Action::Stop { tag } if scheduler.queue.contains_key(&tag) => {
                         scheduler_metrics.stops += 1;
                         scheduler.queue.remove(&tag);
+                        #[cfg(feature = "actor-stats")]
+                        scheduler.stats.remove(&tag);
                         if scheduler.actors.contains_key(&tag) {
                             let actor = scheduler.actors.remove(&tag).unwrap();
                             let w = worker_for(&tag, n_workers);
@@ -506,6 +534,15 @@ fn event_loop(
             scheduler_metrics.actors = scheduler.queue.len() as u64;
 
             if scheduler.config.metric_reporting_enabled {
+                #[cfg(feature = "actor-stats")]
+                {
+                    let stats_snapshot: Vec<ActorStats> =
+                        scheduler.stats.values().cloned().collect();
+                    for s in scheduler.stats.values_mut() {
+                        s.reset();
+                    }
+                    report_actor_stats(&background, &name, &host, stats_snapshot);
+                }
                 report_metrics(
                     &background,
                     &name,
@@ -611,6 +648,27 @@ fn report_logs(
                 };
                 println!("{:?}", log);
             }
+        }
+    }));
+}
+
+#[cfg(feature = "actor-stats")]
+fn report_actor_stats(
+    background: &impl Fn(Runnable),
+    app: &str,
+    host: &str,
+    stats: Vec<ActorStats>,
+) {
+    let app = app.to_string();
+    let host = host.to_string();
+    background(Box::new(move || {
+        for s in stats {
+            let avg_us = if s.count > 0 { s.elapsed_sum_us / s.count } else { 0 };
+            let min_us = if s.elapsed_min_us == u64::MAX { 0 } else { s.elapsed_min_us };
+            println!(
+                "[actor-stats] app={} host={} tag={} count={} min_us={} avg_us={} max_us={} depth_max={}",
+                app, host, s.tag, s.count, min_us, avg_us, s.elapsed_max_us, s.mailbox_depth_max,
+            );
         }
     }));
 }

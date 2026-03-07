@@ -39,6 +39,50 @@ pub struct SchedulerMetrics {
     pub actors: u64,
 }
 
+#[cfg(feature = "actor-stats")]
+#[derive(Debug, Clone)]
+pub struct ActorStats {
+    pub tag: String,
+    pub count: u64,
+    pub elapsed_sum_us: u64,
+    pub elapsed_min_us: u64,
+    pub elapsed_max_us: u64,
+    pub mailbox_depth_max: usize,
+}
+
+#[cfg(feature = "actor-stats")]
+impl ActorStats {
+    pub fn new(tag: String) -> Self {
+        Self {
+            tag,
+            count: 0,
+            elapsed_sum_us: 0,
+            elapsed_min_us: u64::MAX,
+            elapsed_max_us: 0,
+            mailbox_depth_max: 0,
+        }
+    }
+
+    pub fn record_elapsed(&mut self, elapsed_us: u64) {
+        self.count += 1;
+        self.elapsed_sum_us += elapsed_us;
+        if elapsed_us < self.elapsed_min_us {
+            self.elapsed_min_us = elapsed_us;
+        }
+        if elapsed_us > self.elapsed_max_us {
+            self.elapsed_max_us = elapsed_us;
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.count = 0;
+        self.elapsed_sum_us = 0;
+        self.elapsed_min_us = u64::MAX;
+        self.elapsed_max_us = 0;
+        self.mailbox_depth_max = 0;
+    }
+}
+
 impl SchedulerMetrics {
     pub fn named(name: String) -> Self {
         Self {

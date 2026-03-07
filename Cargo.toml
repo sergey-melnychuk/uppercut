@@ -18,6 +18,7 @@ panic = "unwind"
 [features]
 default = []
 host = ["get_if_addrs"]
+actor-stats = []
 
 [dependencies]
 mio = { version = "0.8", features = ["os-poll", "net"] }

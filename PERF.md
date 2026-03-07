@@ -131,3 +131,107 @@ field embedded directly in a per-actor wrapper struct (eliminates the hash map),
 a running `min_inflight` variable updated on every increment/decrement (eliminates the
 `O(n_workers)` scan). That would reduce the overhead to a handful of integer operations per
 dispatch.
+
+---
+
+## 7. Watchdog thread — heartbeat-based blocking detection (not yet applied)
+
+Actors are CPU-only. A blocking call inside `receive()` stalls the entire worker thread,
+preventing all actors hashed to it from making progress. The current `catch_unwind` only
+catches panics, not hangs.
+
+**Approach — atomic heartbeat + watchdog:**
+
+Share one `AtomicU64` per worker between `worker_loop` and a dedicated watchdog thread.
+Each worker stamps the current time when it begins processing a message and clears it when
+done (0 = idle):
+
+```rust
+// Shared: Arc<Vec<AtomicU64>>, one entry per worker thread.
+
+// In worker_loop, wrapping actor.receive():
+dispatch_at[w].store(now_ms(), Ordering::Release);
+let result = catch_unwind(AssertUnwindSafe(|| actor.receive(envelope, &mut sender)));
+dispatch_at[w].store(0, Ordering::Release);
+```
+
+The watchdog thread runs on a `extra_worker_threads` slot and polls on a configurable
+interval (e.g. every 100 ms):
+
+```rust
+loop {
+    thread::sleep(check_interval);
+    let now = now_ms();
+    for (w, slot) in dispatch_at.iter().enumerate() {
+        let started = slot.load(Ordering::Acquire);
+        if started != 0 && now.saturating_sub(started) > deadline_ms {
+            // worker w has been stuck for > deadline — log / emit metric
+        }
+    }
+}
+```
+
+This is zero-overhead on the hot path when workers are healthy (one store before, one store
+after each `receive()`). The watchdog itself is off the critical path entirely.
+
+**What it detects:** any call inside `receive()` that does not return within the deadline —
+`thread::sleep`, blocking `read`/`write`, `Mutex::lock` on a contended lock, infinite loops.
+
+**What it cannot do:** interrupt the stuck thread. Rust provides no safe forced-kill for
+threads. The watchdog can log, emit a metric, or ultimately call `process::abort()` if the
+deadline is badly exceeded and progress is permanently lost.
+
+---
+
+## 8. OS thread state detection — distinguish blocking cause (Linux only, not yet applied)
+
+Combines with item #7 to explain *why* a worker is stuck, not just *that* it is stuck.
+
+On Linux every thread exposes its kernel state in `/proc/self/task/<tid>/stat`. The third
+field (after the process name) is a single character:
+
+| State | Meaning | Verdict for a CPU actor |
+|-------|---------|------------------------|
+| `R`   | running or runnable | legitimate heavy computation |
+| `S`   | interruptible sleep (futex, condvar, channel `recv`) | blocked on a sync primitive — contract violation |
+| `D`   | uninterruptible disk wait | blocking I/O in actor — worst case, cannot be killed until the kernel call returns |
+
+**Implementation:**
+
+Capture each worker's OS thread ID at spawn time using `libc::syscall(SYS_gettid)` and store
+it alongside the heartbeat slot:
+
+```rust
+// At worker spawn (inside the thread):
+let tid = unsafe { libc::syscall(libc::SYS_gettid) as u32 };
+tid_slot[w].store(tid, Ordering::Release);
+```
+
+In the watchdog, once a heartbeat timeout fires, read the thread state:
+
+```rust
+fn thread_state(tid: u32) -> Option<char> {
+    let path = format!("/proc/self/task/{}/stat", tid);
+    let stat = std::fs::read_to_string(path).ok()?;
+    // comm field is wrapped in parens and may contain spaces; find the closing paren
+    let after_comm = stat.rfind(')')? + 2;
+    stat[after_comm..].chars().next()
+}
+```
+
+Combined signal from items #7 + #8:
+
+```
+heartbeat timed out + state == 'S'  →  blocked on mutex/channel/condvar (classic mistake)
+heartbeat timed out + state == 'D'  →  blocking I/O (e.g. file read, connect) — most dangerous
+heartbeat timed out + state == 'R'  →  long CPU computation (may be intentional)
+```
+
+`D`-state detection is the most valuable: it definitively identifies blocking I/O inside an
+actor even when the thread is otherwise unresponsive.
+
+**Dependencies:** requires `libc` (already an indirect dependency via `mio`/`core_affinity`);
+the `/proc` read is a virtual filesystem access with no disk I/O.
+
+**Portability:** Linux only. On macOS the equivalent is `proc_pidinfo` via `libproc`, which
+requires an additional dependency. Gate behind `#[cfg(target_os = "linux")]`.
