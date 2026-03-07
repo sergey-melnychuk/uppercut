@@ -42,3 +42,7 @@ harness = false
 [[bench]]
 name = "mailbox"
 harness = false
+
+[[bench]]
+name = "scheduler"
+harness = false
